@@ -1,8 +1,7 @@
 name: CI
 
-# Runs on every pull request and on main. The plugin depends on the Rust SDK
-# through a path (../plugin-sdk-rust), so it is checked out next to this one;
-# drop that checkout once the SDK is published. The webapp comes from
+# Runs on every pull request and on main. The Rust SDK comes from crates.io as
+# nginxui-plugin-sdk. The webapp comes from
 # plugin-log-analytics-webapp: the tests read its source at the release that
 # webapp.lock names, and the packages carry that release.
 on:
@@ -30,11 +29,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: plugin-log-analytics-tantivy
-
-      - uses: actions/checkout@v4
-        with:
-          repository: nginxui/plugin-sdk-rust
-          path: plugin-sdk-rust
 
       # The API shape and search syntax tests read the webapp source of the
       # release this plugin packages.
@@ -73,11 +67,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: plugin-log-analytics-tantivy
-
-      - uses: actions/checkout@v4
-        with:
-          repository: nginxui/plugin-sdk-rust
-          path: plugin-sdk-rust
 
       - uses: dtolnay/rust-toolchain@stable
 

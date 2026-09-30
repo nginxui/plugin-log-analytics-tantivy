@@ -18,9 +18,8 @@ name: Release
 # catalog (nginxui/plugins) polls this repository's releases and picks the new
 # one up on its own.
 #
-# Like ci.yml, the SDKs are checked out next to this repository until they
-# are published. No cargo cache is used here, so a cache written by a pull
-# request can never end up in a signed binary.
+# No cargo cache is used here, so a cache written by a pull request can never
+# end up in a signed binary.
 on:
   push:
     tags: ["v*"]
@@ -70,12 +69,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: plugin-log-analytics-tantivy
-          persist-credentials: false
-
-      - uses: actions/checkout@v4
-        with:
-          repository: nginxui/plugin-sdk-rust
-          path: plugin-sdk-rust
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable
@@ -130,12 +123,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: plugin-log-analytics-tantivy
-          persist-credentials: false
-
-      - uses: actions/checkout@v4
-        with:
-          repository: nginxui/plugin-sdk-rust
-          path: plugin-sdk-rust
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@stable

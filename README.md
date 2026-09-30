@@ -136,6 +136,15 @@ The tests read the webapp source from a checkout of
 `plugin-log-analytics-webapp` next to this repository, or from
 `LOG_ANALYTICS_WEBAPP_DIR`.
 
+The SDK comes from crates.io as `nginxui-plugin-sdk`. To build against a local
+checkout of `plugin-sdk-rust`, patch it in `.cargo/config.toml`, which git
+ignores:
+
+```toml
+[patch.crates-io]
+nginxui-plugin-sdk = { path = "../plugin-sdk-rust" }
+```
+
 ## Releases
 
 Pushing a tag `vX.Y.Z` that matches the version in `plugin.json` and

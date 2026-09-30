@@ -12,7 +12,7 @@ name = "log-analytics-tantivy"
 path = "src/main.rs"
 
 [dependencies]
-nginxui-plugin-sdk = { path = "../plugin-sdk-rust" }
+nginxui-plugin-sdk = "0.1.0"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "signal"] }
 tantivy = { version = "0.26.2", features = ["zstd-compression"] }
 maxminddb = { version = "0.32.0", features = ["mmap"] }

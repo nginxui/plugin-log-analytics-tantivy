@@ -3,3 +3,5 @@
 # The webapp comes from plugin-log-analytics-webapp, see build.sh
 /webapp
 *.noindex
+# A local patch to a checkout of the SDK, see the README
+/.cargo/config.toml
