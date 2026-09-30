@@ -516,17 +516,30 @@ pub fn regions(
     filter: &Filter,
     country: &str,
     size: usize,
-) -> Result<Vec<Share>, AnalyticsError> {
+) -> Result<Vec<RegionShare>, AnalyticsError> {
     let filter = Filter { countries: vec![country.to_owned()], ..filter.clone() };
     let mut counts = count_terms(searcher, fields, &filter, "sub1")?;
+    let mut levels: HashMap<String, u8> = counts.keys().map(|code| (code.clone(), 1)).collect();
     for (code, count) in count_terms(searcher, fields, &filter, "sub2")? {
+        // A code counted at both levels keeps the level it was first seen at
+        levels.entry(code.clone()).or_insert(2);
         *counts.entry(code).or_default() += count;
     }
     let total = searcher.search(query::build(fields, &filter).as_ref(), &tantivy::collector::Count)? as u64;
     Ok(top_terms(&counts, size)
         .into_iter()
-        .map(|(key, value)| Share { percent: percent(value, total), key, value })
+        .map(|(code, value)| RegionShare { level: levels[&code], percent: percent(value, total), code, value })
         .collect())
+}
+
+/// Requests of one subdivision of a country. Level is 1 for the first
+/// subdivision and 2 for the second.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct RegionShare {
+    pub code: String,
+    pub level: u8,
+    pub value: u64,
+    pub percent: f64,
 }
 
 /// One city of the hotspot map.
@@ -718,10 +731,10 @@ mod tests {
         let filter = Filter::default();
 
         let fr = regions(&searcher, &f, &filter, "FR", 10).unwrap();
-        let get = |code: &str| fr.iter().find(|s| s.key == code).map(|s| (s.value, s.percent.round() as i64));
-        assert_eq!(get("FR-IDF"), Some((2, 67)));
-        assert_eq!(get("FR-75"), Some((2, 67)));
-        assert_eq!(get("FR-69"), Some((1, 33)));
+        let get = |code: &str| fr.iter().find(|s| s.code == code).map(|s| (s.level, s.value, s.percent.round() as i64));
+        assert_eq!(get("FR-IDF"), Some((1, 2, 67)));
+        assert_eq!(get("FR-75"), Some((2, 2, 67)));
+        assert_eq!(get("FR-69"), Some((2, 1, 33)));
         assert_eq!(get("US-CA"), None, "another country is left out");
 
         let all = city_points(&searcher, &f, &filter, None, 10).unwrap();

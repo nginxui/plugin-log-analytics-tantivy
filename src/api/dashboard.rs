@@ -126,7 +126,7 @@ pub async fn regions(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, Api
         }
         let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
         let shares = analytics::regions(searcher, app.engine.store.fields(), &filter, &country, 500)?;
-        Ok(json!({ "data": items(&shares, "code") }))
+        Ok(json!({ "data": shares }))
     })
     .await
 }
