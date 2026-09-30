@@ -477,6 +477,11 @@ impl Engine {
             }
             Err(_) => nginxui_plugin_sdk::warn!("the index writer is still in use"),
         }
+        if report.docs > 0 {
+            if let Err(e) = self.store.merge_tail() {
+                nginxui_plugin_sdk::warn!("could not merge the last segments: {e}");
+            }
+        }
         self.store.reload();
         // Groups whose rollup was dropped are ready before the first request
         for p in &planned_paths {

@@ -138,6 +138,27 @@ impl Store {
         Ok(writer)
     }
 
+    /// Merges the small segments a bulk import leaves behind: each writer
+    /// thread ends with a segment of its own, and the merge policy leaves
+    /// them apart while they are few. Segments under half the size of the
+    /// largest are merged into one when there are two or more. Returns how
+    /// many were merged.
+    pub fn merge_tail(&self) -> Result<usize, StoreError> {
+        let metas = self.index.searchable_segment_metas()?;
+        let largest = metas.iter().map(|m| m.num_docs()).max().unwrap_or(0);
+        let small: Vec<_> = metas.iter().filter(|m| m.num_docs() < largest / 2).map(|m| m.id()).collect();
+        if small.len() < 2 {
+            return Ok(0);
+        }
+        // The merge needs no indexing heap, the smallest writer does
+        let options = IndexWriterOptions::builder().num_worker_threads(1).num_merge_threads(1).build();
+        let mut writer = self.index.writer_with_options::<TantivyDocument>(options)?;
+        writer.set_merge_policy(Box::new(tantivy::indexer::NoMergePolicy));
+        writer.merge(&small).wait()?;
+        writer.wait_merging_threads()?;
+        Ok(small.len())
+    }
+
     /// Bytes the index files take on disk.
     pub fn disk_size(&self) -> u64 {
         std::fs::read_dir(&self.dir)
@@ -184,5 +205,38 @@ mod tests {
         }
         let (_store, state) = Store::open(&path).unwrap();
         assert_eq!(state, IndexState::default());
+    }
+    #[test]
+    fn the_small_segments_of_an_import_are_merged_and_the_state_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, _) = Store::open(&dir.path().join("index")).unwrap();
+        let ts = store.fields().ts;
+        let commit = |docs: i64, state: &IndexState| {
+            let mut writer = store.writer(&crate::sizing::sizing(Some(1 << 29), 1)).unwrap();
+            writer.set_merge_policy(Box::new(tantivy::indexer::NoMergePolicy));
+            for i in 0..docs {
+                writer.add_document(tantivy::doc!(ts => i)).unwrap();
+            }
+            let mut prepared = writer.prepare_commit().unwrap();
+            prepared.set_payload(&state.to_payload());
+            prepared.commit().unwrap();
+            writer.wait_merging_threads().unwrap();
+        };
+        let mut state = IndexState::default();
+        state.groups.insert("g".into(), Default::default());
+        commit(1000, &state);
+        commit(100, &state);
+        commit(100, &state);
+        commit(100, &state);
+
+        assert_eq!(store.merge_tail().unwrap(), 3);
+        let metas = store.index.searchable_segment_metas().unwrap();
+        let mut sizes: Vec<u32> = metas.iter().map(|m| m.num_docs()).collect();
+        sizes.sort_unstable();
+        assert_eq!(sizes, [300, 1000]);
+        assert_eq!(store.merge_tail().unwrap(), 0);
+        drop(store);
+        let (_, reopened) = Store::open(&dir.path().join("index")).unwrap();
+        assert!(reopened.groups.contains_key("g"), "the merge keeps the state of the last commit");
     }
 }
