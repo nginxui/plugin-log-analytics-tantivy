@@ -1,0 +1,57 @@
+[package]
+name = "plugin-log-analytics-rs"
+version = "0.1.0-beta.1"
+edition = "2021"
+rust-version = "1.88"
+description = "NGINX UI plugin: search nginx access logs and see traffic on a dashboard"
+license = "AGPL-3.0-only"
+publish = false
+
+[[bin]]
+name = "log-analytics-rs"
+path = "src/main.rs"
+
+[dependencies]
+nginxui-plugin-sdk = { path = "../plugin-sdk-rust" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "signal"] }
+tantivy = "0.26.2"
+maxminddb = { version = "0.32.0", features = ["mmap"] }
+regex = "1"
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+libc = "0.2"
+xz2 = "0.1"
+bytes = "1"
+http-body-util = "0.1"
+http = "1"
+hyper-util = { version = "0.1", features = ["tokio"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+thiserror = "2"
+base64 = "0.22"
+sha2 = "0.10"
+form_urlencoded = "1"
+
+[target.'cfg(not(windows))'.dependencies]
+mimalloc = { version = "0.1", default-features = false }
+libmimalloc-sys = { version = "0.1", default-features = false, features = ["extended"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+panic = "unwind"
+strip = true

@@ -1,0 +1,102 @@
+{
+  "%{indexed} of %{total} files indexed, %{documents} documents": {
+    "zh_CN": "已索引 %{indexed} / %{total} 个文件，共 %{documents} 个文档",
+    "zh_TW": "已索引 %{indexed} / %{total} 個檔案，共 %{documents} 份文件",
+    "ja_JP": "%{total} 件中 %{indexed} 件のファイルをインデックス済み、ドキュメント %{documents} 件"
+  },
+  "Alternatively, if you cannot download the database, you can place GeoLite2-City.mmdb in the geolite folder of the plugin data directory.": {
+    "zh_CN": "如果无法下载数据库，也可以手动将 GeoLite2-City.mmdb 放到插件数据目录下的 geolite 文件夹中。",
+    "zh_TW": "如果無法下載資料庫，也可以手動將 GeoLite2-City.mmdb 放到外掛資料目錄下的 geolite 資料夾中。",
+    "ja_JP": "データベースをダウンロードできない場合は、プラグインのデータディレクトリにある geolite フォルダーに GeoLite2-City.mmdb を配置することもできます。"
+  },
+  "Custom MMDB file": {
+    "zh_CN": "自定义 MMDB 文件",
+    "zh_TW": "自訂 MMDB 檔案",
+    "ja_JP": "カスタム MMDB ファイル"
+  },
+  "Directory with the map outline files of China. Leave empty to load them from an online source.": {
+    "zh_CN": "中国地图轮廓文件所在目录。留空则从在线来源加载。",
+    "zh_TW": "中國地圖輪廓檔案所在目錄。留空則從線上來源載入。",
+    "ja_JP": "中国の地図の輪郭ファイルがあるディレクトリです。空欄の場合はオンラインから読み込みます。"
+  },
+  "How many log groups are indexed at the same time. Lower it to use less memory while indexing. 0 chooses automatically from the available CPU.": {
+    "zh_CN": "同时索引的日志组数量。调低可减少索引期间的内存占用。0 表示根据可用 CPU 自动选择。",
+    "zh_TW": "同時索引的日誌組數量。調低可減少索引期間的記憶體佔用。0 表示依可用 CPU 自動選擇。",
+    "ja_JP": "同時にインデックスするログのグループ数です。下げるとインデックス中のメモリ使用量が減ります。0 の場合は利用可能な CPU に応じて自動で決まります。"
+  },
+  "How often new log lines are added to the index. 0 uses the default of 15 minutes.": {
+    "zh_CN": "新日志行加入索引的频率。0 表示使用默认的 15 分钟。",
+    "zh_TW": "新日誌行加入索引的頻率。0 表示使用預設的 15 分鐘。",
+    "ja_JP": "新しいログ行をインデックスに追加する間隔です。0 の場合は既定の 15 分になります。"
+  },
+  "Incremental index interval (minutes)": {
+    "zh_CN": "增量索引间隔（分钟）",
+    "zh_TW": "增量索引間隔（分鐘）",
+    "ja_JP": "増分インデックスの間隔（分）"
+  },
+  "Log indexing consumes significant computational resources including CPU and memory. Please ensure your system meets the minimum requirements.": {
+    "zh_CN": "日志索引会消耗大量计算资源，包括 CPU 和内存。请确保您的系统满足最低要求。",
+    "zh_TW": "日誌索引會消耗大量運算資源，包括 CPU 和記憶體。請確保您的系統符合最低要求。",
+    "ja_JP": "ログのインデックス作成は CPU やメモリなど多くの計算リソースを消費します。システムが最小要件を満たしていることを確認してください。"
+  },
+  "Map files directory": {
+    "zh_CN": "地图文件目录",
+    "zh_TW": "地圖檔案目錄",
+    "ja_JP": "地図ファイルのディレクトリ"
+  },
+  "Maximum concurrent index tasks": {
+    "zh_CN": "最大并发索引任务数",
+    "zh_TW": "最大並行索引任務數",
+    "ja_JP": "同時インデックスタスクの最大数"
+  },
+  "Optional. A MaxMind DB file with your own location labels. Leave empty to use the GeoLite2 database.": {
+    "zh_CN": "可选。包含自有位置标签的 MaxMind DB 文件。留空则使用 GeoLite2 数据库。",
+    "zh_TW": "選填。包含自有位置標籤的 MaxMind DB 檔案。留空則使用 GeoLite2 資料庫。",
+    "ja_JP": "任意。独自の位置ラベルを含む MaxMind DB ファイルです。空欄の場合は GeoLite2 データベースを使用します。"
+  },
+  "This view could not be loaded.": {
+    "zh_CN": "无法加载此视图。",
+    "zh_TW": "無法載入此檢視。",
+    "ja_JP": "このビューを読み込めませんでした。"
+  },
+  "To use custom MMDB data, set the custom MMDB file in the plugin settings.": {
+    "zh_CN": "如需使用自定义 MMDB 数据，请在插件设置中指定自定义 MMDB 文件。",
+    "zh_TW": "如需使用自訂 MMDB 資料，請在外掛設定中指定自訂 MMDB 檔案。",
+    "ja_JP": "カスタム MMDB データを使うには、プラグイン設定でカスタム MMDB ファイルを指定してください。"
+  },
+  "CPU": {
+    "zh_CN": "CPU",
+    "zh_TW": "CPU",
+    "ja_JP": "CPU"
+  },
+  "IP": {
+    "zh_CN": "IP",
+    "zh_TW": "IP",
+    "ja_JP": "IP"
+  },
+  "OS": {
+    "zh_CN": "OS",
+    "zh_TW": "OS",
+    "ja_JP": "OS"
+  },
+  "URL": {
+    "zh_CN": "URL",
+    "zh_TW": "URL",
+    "ja_JP": "URL"
+  },
+  "Mozilla/5.0...": {
+    "zh_CN": "Mozilla/5.0...",
+    "zh_TW": "Mozilla/5.0...",
+    "ja_JP": "Mozilla/5.0..."
+  },
+  "https://...": {
+    "zh_CN": "https://...",
+    "zh_TW": "https://...",
+    "ja_JP": "https://..."
+  },
+  "Index Settings": {
+    "zh_CN": "索引设置",
+    "zh_TW": "索引設定",
+    "ja_JP": "インデックス設定"
+  }
+}

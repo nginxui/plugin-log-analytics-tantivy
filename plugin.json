@@ -1,0 +1,101 @@
+{
+  "id": "com.nginxui.log-analytics-rs",
+  "name": "Log Analytics",
+  "version": "0.1.0-beta.1",
+  "description": "Search nginx access logs with structured queries and see traffic on a dashboard with a visitor map.",
+  "icon_path": "webapp/dist/icon.svg",
+  "api_version": 1,
+  "min_nginx_ui_version": "2.7.0",
+  "i18n": {
+    "ja_JP": {
+      "name": "ログ分析",
+      "description": "Nginx のアクセスログを構造化検索し、ダッシュボードと訪問者マップでトラフィックを確認します。"
+    },
+    "zh_CN": {
+      "name": "日志分析",
+      "description": "对 Nginx 访问日志做结构化搜索，在面板和访客地图上查看流量。"
+    },
+    "zh_TW": {
+      "name": "日誌分析",
+      "description": "對 Nginx 存取日誌做結構化搜尋，在面板和訪客地圖上檢視流量。"
+    }
+  },
+  "server": {
+    "executables": {
+      "darwin-amd64": "server/dist/log-analytics-rs-darwin-amd64",
+      "darwin-arm64": "server/dist/log-analytics-rs-darwin-arm64",
+      "linux-amd64": "server/dist/log-analytics-rs-linux-amd64",
+      "linux-arm64": "server/dist/log-analytics-rs-linux-arm64",
+      "windows-amd64": "server/dist/log-analytics-rs-windows-amd64.exe",
+      "windows-arm64": "server/dist/log-analytics-rs-windows-arm64.exe"
+    },
+    "lifecycle": "resident",
+    "resources": {
+      "recommended_memory_mb": 256
+    }
+  },
+  "webapp": {
+    "bundle_path": "webapp/dist/main.js",
+    "style_path": "webapp/dist/style.css",
+    "shared": {
+      "@vueuse/core": ">=15.0.0",
+      "antdv-next": "~1.5",
+      "pinia": ">=4.0.3 <5",
+      "vue": ">=3.5.42 <4",
+      "vue-router": ">=5.3.1 <6"
+    },
+    "chunks": {
+      "dashboard": "webapp/dist/chunks/dashboard.js",
+      "search": "webapp/dist/chunks/search.js"
+    }
+  },
+  "capabilities": [
+    "http"
+  ],
+  "permissions": [
+    "log.files",
+    "network"
+  ],
+  "conflicts": [
+    "com.nginxui.log-analytics"
+  ],
+  "events": [
+    "log.paths_changed"
+  ],
+  "network_hosts": [
+    "cloud.nginxui.com"
+  ],
+  "http": {
+    "listen": "unix"
+  },
+  "settings_schema": {
+    "settings": [
+      {
+        "key": "incremental_index_interval",
+        "type": "number",
+        "display_name": "Indexing interval (minutes)",
+        "help_text": "How often the logs are checked for new lines. Zero or empty means 15 minutes.",
+        "default": 15
+      },
+      {
+        "key": "max_concurrent_index_tasks",
+        "type": "number",
+        "display_name": "Logs indexed at once",
+        "help_text": "The most log files indexed at the same time. A lower number uses less memory. Zero picks a value from the available CPUs.",
+        "default": 0
+      },
+      {
+        "key": "index_custom_mmdb",
+        "type": "text",
+        "display_name": "Custom IP location database",
+        "help_text": "Path of your own IP location database file. Empty uses the downloaded one."
+      },
+      {
+        "key": "geo_map_path",
+        "type": "text",
+        "display_name": "Map files folder",
+        "help_text": "Folder with the map outline files. Empty uses the plugin's own folder. Files not found there are loaded online."
+      }
+    ]
+  }
+}
