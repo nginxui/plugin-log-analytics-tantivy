@@ -46,6 +46,7 @@ fn plugin(app: Arc<App>) -> Plugin {
 }
 
 fn main() {
+    sys::tune_allocator();
     let dir = data_dir();
     let app = match App::open(&dir) {
         Ok(app) => app,

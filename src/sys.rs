@@ -223,6 +223,28 @@ pub fn release_memory() {
 #[cfg(windows)]
 pub fn release_memory() {}
 
+/// Option ids of mimalloc v2, which the crate does not export.
+#[cfg(not(windows))]
+const MI_ARENA_EAGER_COMMIT: libmimalloc_sys::mi_option_t = 4;
+#[cfg(not(windows))]
+const MI_PURGE_DELAY: libmimalloc_sys::mi_option_t = 15;
+
+/// Makes the allocator return freed memory to the system at once and commit
+/// its arenas as they fill. By default it keeps 70 MB or more of freed memory
+/// through an indexing round, which a small machine cannot spare, and the
+/// cost in speed is about 2%.
+#[cfg(not(windows))]
+pub fn tune_allocator() {
+    // SAFETY: mi_option_set only stores an option value.
+    unsafe {
+        libmimalloc_sys::mi_option_set(MI_ARENA_EAGER_COMMIT, 0);
+        libmimalloc_sys::mi_option_set(MI_PURGE_DELAY, 0);
+    }
+}
+
+#[cfg(windows)]
+pub fn tune_allocator() {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +257,18 @@ mod tests {
         assert_eq!(own_group(text, Some("memory")).as_deref(), Some("/docker/abc"));
         assert_eq!(own_group(text, Some("cpu")).as_deref(), Some("/docker/abc"));
         assert_eq!(own_group(text, Some("pids")), None);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn allocator_option_ids_match_the_linked_mimalloc() {
+        // Options with fixed defaults around the two ids tell that the ids
+        // follow the option list of the linked mimalloc
+        // SAFETY: mi_option_get only reads an option value.
+        let get = |id| unsafe { libmimalloc_sys::mi_option_get(id) };
+        assert_eq!((get(18), get(19), get(20)), (100, 32, 32), "os_tag, max_errors, max_warnings");
+        assert!((0..=2).contains(&get(MI_ARENA_EAGER_COMMIT)));
+        assert!(get(MI_PURGE_DELAY) >= 0);
     }
 
     #[test]
