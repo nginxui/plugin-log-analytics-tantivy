@@ -1,4 +1,4 @@
 # The webapp release this plugin packages, see build.sh. The archive comes from
 # the releases of plugin-log-analytics-webapp and has to match the checksum.
 version=0.1.0
-sha256=61960e693cd4d99360f0b57d28e69312235989fc01ce58bcf7823cd909bdb3d7
+sha256=2c2e025a67562cb5cd7aa13004e79ca4a06a79242777349e69d4d51208c3292b
