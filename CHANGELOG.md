@@ -20,3 +20,6 @@ All notable changes to this plugin are documented here. The format follows
   copies, partial last lines, rewritten files and restarts do not lose or
   repeat lines. A stopped first import resumes.
 - The plugin conflicts with `com.nginxui.log-analytics`.
+- Error logs are indexed beside the access logs and searched in the
+  structured view by level, client, request path and text, with `level:` in
+  the search box. They have no dashboard.
