@@ -6,7 +6,6 @@
 #   ./build.sh --prebuilt DIR  package executables built elsewhere
 #   ./build.sh --webapp ARCHIVE  package this webapp archive
 #   ./build.sh --webapp-only  only take the webapp into webapp/dist
-#   ./build.sh --update-lock  pin the newest sibling webapp build in webapp.lock
 #
 # Every platform gets its own package, dist/<id>-<version>-<os>-<arch>.tar.gz,
 # with one executable and a plugin.json whose server.executables names only that
@@ -14,10 +13,10 @@
 # archive for the catalog.
 #
 # The browser bundle comes from plugin-log-analytics-webapp, which builds it
-# for both log analytics plugins. webapp.lock names the release and its
-# checksum. The archive is, in this order, the one --webapp names, the one built
-# in a sibling checkout (../plugin-log-analytics-webapp/release), or the release
-# download, which must match the checksum. The build of this plugin is taken
+# for both log analytics plugins. webapp.lock names the release version. The
+# archive is, in this order, the one --webapp names, the one built in a sibling
+# checkout (../plugin-log-analytics-webapp/release), or the release download,
+# checked against the .sha256 file of the release. The build of this plugin is taken
 # into webapp/dist: the packages carry it with the chunks and the map and
 # country files the bundle loads on demand.
 #
@@ -60,17 +59,15 @@ PLATFORMS=(
   "windows-arm64|aarch64-pc-windows-gnullvm|zigbuild"
 )
 
-USAGE="usage: $0 [--host-only] [--prebuilt DIR] [--webapp ARCHIVE] [--webapp-only] [--update-lock]"
+USAGE="usage: $0 [--host-only] [--prebuilt DIR] [--webapp ARCHIVE] [--webapp-only]"
 HOST_ONLY=0
 WEBAPP_ONLY=0
-UPDATE_LOCK=0
 PREBUILT=""
 WEBAPP_ARCHIVE="${WEBAPP_ARCHIVE:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host-only) HOST_ONLY=1 ;;
     --webapp-only) WEBAPP_ONLY=1 ;;
-    --update-lock) UPDATE_LOCK=1 ;;
     --prebuilt)
       if [[ $# -lt 2 ]]; then
         echo "${USAGE}" >&2
@@ -122,52 +119,22 @@ fi
 
 cd "${ROOT}"
 
-# --update-lock pins the webapp archive it would package: the one --webapp
-# names or the newest one built in the sibling checkout.
-if [[ "${UPDATE_LOCK}" == 1 ]]; then
-  if [[ -z "${WEBAPP_ARCHIVE}" ]]; then
-    WEBAPP_ARCHIVE="$(ls ../plugin-log-analytics-webapp/release/plugin-log-analytics-webapp-*.tar.gz 2>/dev/null | sort -V | tail -n 1)"
-  fi
-  if [[ ! -f "${WEBAPP_ARCHIVE}" ]]; then
-    echo "no webapp archive to pin, build one with bun run package or pass --webapp" >&2
-    exit 1
-  fi
-  name="$(basename "${WEBAPP_ARCHIVE}")"
-  version="${name#plugin-log-analytics-webapp-}"
-  version="${version%.tar.gz}"
-  if [[ "${version}" == "${name}" ]]; then
-    echo "${name} is not named plugin-log-analytics-webapp-<version>.tar.gz" >&2
-    exit 1
-  fi
-  if ! tar -tzf "${WEBAPP_ARCHIVE}" "${PLUGIN_ID}/main.js" >/dev/null 2>&1; then
-    echo "${name} holds no build of ${PLUGIN_ID}" >&2
-    exit 1
-  fi
-  sha="$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)"
-  sed -i.bak -e "s/^version=.*/version=${version}/" -e "s/^sha256=.*/sha256=${sha}/" webapp.lock
-  rm -f webapp.lock.bak
-  echo "webapp.lock: ${version} ${sha}"
-  exit 0
-fi
-
 # The webapp of this plugin, taken from the release archive into webapp/dist.
 WEBAPP_VERSION="$(sed -n 's/^version=//p' webapp.lock)"
-WEBAPP_SHA256="$(sed -n 's/^sha256=//p' webapp.lock)"
 WEBAPP_NAME="plugin-log-analytics-webapp-${WEBAPP_VERSION}.tar.gz"
 if [[ -z "${WEBAPP_ARCHIVE}" && -f "../plugin-log-analytics-webapp/release/${WEBAPP_NAME}" ]]; then
   WEBAPP_ARCHIVE="../plugin-log-analytics-webapp/release/${WEBAPP_NAME}"
-  if [[ "$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)" != "${WEBAPP_SHA256}" ]]; then
-    echo "warning: the sibling webapp build differs from webapp.lock, run ./build.sh --update-lock to pin it" >&2
-  fi
 fi
 if [[ -z "${WEBAPP_ARCHIVE}" ]]; then
   WEBAPP_ARCHIVE="${DIST}/${WEBAPP_NAME}"
+  url="https://github.com/nginxui/plugin-log-analytics-webapp/releases/download/v${WEBAPP_VERSION}/${WEBAPP_NAME}"
   mkdir -p "${DIST}"
-  curl -fsSL -o "${WEBAPP_ARCHIVE}" \
-    "https://github.com/nginxui/plugin-log-analytics-webapp/releases/download/v${WEBAPP_VERSION}/${WEBAPP_NAME}"
+  curl -fsSL -o "${WEBAPP_ARCHIVE}" "${url}"
+  # The release publishes the checksum next to the archive
+  expected="$(curl -fsSL "${url}.sha256" | cut -d' ' -f1)"
   actual="$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)"
-  if [[ "${actual}" != "${WEBAPP_SHA256}" ]]; then
-    echo "the webapp archive does not match webapp.lock: ${actual}" >&2
+  if [[ -z "${expected}" || "${actual}" != "${expected}" ]]; then
+    echo "the webapp archive does not match the checksum of its release: ${actual}" >&2
     exit 1
   fi
 fi

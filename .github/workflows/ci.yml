@@ -85,7 +85,8 @@ jobs:
         with:
           workspaces: plugin-log-analytics-tantivy
 
-      # Downloads the webapp release webapp.lock names and checks its checksum
+      # Downloads the webapp release webapp.lock names and checks it against the
+      # checksum published with it
       - name: Take the webapp release
         run: ./build.sh --webapp-only
 
