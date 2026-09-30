@@ -521,7 +521,7 @@ impl Layout {
         let mut day_labels = Vec::new();
         let mut seen: Vec<i32> = Vec::new();
         let mut t = start;
-        while t <= end {
+        while t < end {
             let key = localtime::date_key(t);
             if !seen.contains(&key) {
                 let lo = localtime::local_midnight(t);
@@ -539,7 +539,7 @@ impl Layout {
             hour_count,
             days,
             day_labels,
-            minute_count: ((end - start).max(0) / 60 + 1) as usize,
+            minute_count: ((end - start).max(0) as usize).div_ceil(60),
         }
     }
 

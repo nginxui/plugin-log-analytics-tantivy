@@ -121,8 +121,8 @@ fn assert_windows_match(bed: &Bed, rng: &mut Rng, lo: i64, hi: i64, windows: usi
     };
     // The window of the page: UTC midnight to the end of a UTC day
     let day = |t: i64| t - t.rem_euclid(86400);
-    check(day(lo), day(hi) + 86399);
-    check(day(lo + 86400), day(hi) + 86399);
+    check(day(lo), day(hi) + 86400);
+    check(day(lo + 86400), day(hi) + 86400);
     check(lo - 3 * 86400, hi + 3 * 86400);
     for _ in 0..windows {
         let start = lo - 7200 + rng.below((hi - lo + 14_400) as u64) as i64;

@@ -51,13 +51,25 @@ pub struct SearchRequest {
     pub sort_order: String,
 }
 
+/// The exclusive end of a request range. The `end_time` of a request is the
+/// last second it includes, zero leaves the range open.
+pub(super) fn end_after(end_time: i64) -> i64 {
+    if end_time > 0 {
+        end_time.saturating_add(1)
+    } else {
+        0
+    }
+}
+
 fn filter_of(request: &SearchRequest, group: &str, now: i64) -> Filter {
-    let (mut start, mut end) =
-        ((request.start_time > 0).then_some(request.start_time), (request.end_time > 0).then_some(request.end_time));
+    let (mut start, mut end) = (
+        (request.start_time > 0).then_some(request.start_time),
+        (request.end_time > 0).then_some(end_after(request.end_time)),
+    );
     // Without a range the search covers all time up to now
     if start.is_none() && end.is_none() {
         start = Some(0);
-        end = Some(now);
+        end = Some(end_after(now));
     }
     Filter {
         text: request.query.clone(),
@@ -195,7 +207,7 @@ pub async fn analytics(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, A
     let app = app.clone();
     tokio::task::spawn_blocking(move || -> Result<Resp, ApiError> {
         analytics::validate_range(request.start_time, request.end_time)?;
-        let filter = analytics::range_filter(&group, request.start_time, request.end_time);
+        let filter = analytics::range_filter(&group, request.start_time, end_after(request.end_time));
         let stats = analytics::entries_stats(&app.engine.store.searcher(), app.engine.store.fields(), &filter)?;
         Ok(ok(&stats))
     })
@@ -217,11 +229,19 @@ mod tests {
     fn a_search_without_a_range_covers_all_time_up_to_now() {
         let request = SearchRequest::default();
         let f = filter_of(&request, "", 1000);
-        assert_eq!((f.start, f.end), (Some(0), Some(1000)));
+        assert_eq!((f.start, f.end), (Some(0), Some(1001)));
         let request = SearchRequest { start_time: 5, ..Default::default() };
         let f = filter_of(&request, "/a.log", 1000);
         assert_eq!((f.start, f.end), (Some(5), None));
         assert_eq!(f.groups, ["/a.log"]);
+    }
+
+    #[test]
+    fn the_end_time_is_the_last_second_included() {
+        let request = SearchRequest { start_time: 5, end_time: 9, ..Default::default() };
+        let f = filter_of(&request, "", 1000);
+        assert_eq!((f.start, f.end), (Some(5), Some(10)));
+        assert_eq!(end_after(0), 0);
     }
 
     #[test]

@@ -86,8 +86,8 @@ async fn dashboard_and_search_match_the_validated_figures() {
 
     // Each window, read from the index and from the rollups
     let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
-    let (w30_start, w30_end) = (day_start(first), day_start(last) + 86399);
-    let (w7_start, w7_end) = (day_start(last - 7 * 86400), day_start(last) + 86399);
+    let (w30_start, w30_end) = (day_start(first), day_start(last) + 86400);
+    let (w7_start, w7_end) = (day_start(last - 7 * 86400), day_start(last) + 86400);
     let unaligned_end = last;
     let windows = [("30 days", w30_start, w30_end, 1_400_000, 59_983), ("7 days", w7_start, w7_end, 326_923, 54_091)];
     for (name, start, end, pv, uv) in windows {

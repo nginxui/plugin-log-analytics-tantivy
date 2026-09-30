@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use super::resolve_group;
 use super::respond::{self, json_response, ok, ApiError, Resp};
-use super::search::AnalyticsRequest;
+use super::search::{end_after, AnalyticsRequest};
 use crate::analytics::{self, Share};
 use crate::app::App;
 
@@ -34,9 +34,9 @@ fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
-/// The window of a dashboard request in unix seconds. The dates are UTC days,
-/// the end date is included up to its last second. A missing date means the
-/// last 30 days.
+/// The window `[start, end)` of a dashboard request in unix seconds. The dates
+/// are UTC days and the end date is included, so the window ends at the next
+/// midnight. A missing date means the last 30 days.
 fn window(request: &DashboardRequest, now: i64) -> Result<(i64, i64), ApiError> {
     let parse = |text: &str, field: &str| -> Result<Option<i64>, ApiError> {
         if text.is_empty() {
@@ -46,7 +46,7 @@ fn window(request: &DashboardRequest, now: i64) -> Result<(i64, i64), ApiError> 
         Ok(Some(Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).expect("midnight")).timestamp()))
     };
     let start = parse(&request.start_date, "start_date")?;
-    let end = parse(&request.end_date, "end_date")?.map(|t| t + 23 * 3600 + 59 * 60 + 59);
+    let end = parse(&request.end_date, "end_date")?.map(|t| t + 86400);
     Ok(match (start, end) {
         (Some(s), Some(e)) => (s, e),
         _ => (now - 30 * 86400, now),
@@ -91,7 +91,7 @@ where
 /// Requests per country, for the world map.
 pub async fn world(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
     geo(app, req, |app, request, group, searcher| {
-        let filter = analytics::range_filter(group, request.start_time, request.end_time);
+        let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
         let shares = analytics::countries(searcher, app.engine.store.fields(), &filter, 300)?;
         Ok(json!({ "data": items(&shares, "code") }))
     })
@@ -101,7 +101,7 @@ pub async fn world(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiEr
 /// Requests per province of China.
 pub async fn china(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
     geo(app, req, |app, request, group, searcher| {
-        let filter = analytics::range_filter(group, request.start_time, request.end_time);
+        let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
         let shares = analytics::provinces(searcher, app.engine.store.fields(), &filter, "CN", 100)?;
         Ok(json!({ "data": items(&shares, "name") }))
     })
@@ -134,7 +134,7 @@ pub async fn china_city(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, 
         analytics::validate_range(request.start_time, request.end_time)?;
         let searcher = app.engine.store.searcher();
         let fields = app.engine.store.fields();
-        let filter = analytics::range_filter(&group, request.start_time, request.end_time);
+        let filter = analytics::range_filter(&group, request.start_time, end_after(request.end_time));
         let cities = analytics::cities(&searcher, fields, &filter, "CN", &province, 100)?;
         let custom = app.engine.settings().uses_custom_mmdb();
         let mut body = json!({ "data": items(&cities, "name"), "custom_mmdb_mode": custom });
@@ -154,7 +154,7 @@ pub async fn china_city(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, 
 pub async fn stats(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
     geo(app, req, |app, request, group, searcher| {
         let limit = if request.limit > 0 { request.limit as usize } else { 20 };
-        let filter = analytics::range_filter(group, request.start_time, request.end_time);
+        let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
         let shares = analytics::countries(searcher, app.engine.store.fields(), &filter, limit)?;
         // The keys are the ones of the Go structure, which has no field tags
         let stats: Vec<Value> = shares.iter().map(|s| json!({"Country": s.key, "Requests": s.value})).collect();
@@ -175,8 +175,8 @@ mod tests {
     fn dates_are_utc_days_and_the_end_day_is_included() {
         let (s, e) = window(&request("2026-09-01", "2026-09-30"), 0).unwrap();
         assert_eq!(s, 1_788_220_800);
-        assert_eq!(e, 1_790_812_799);
-        assert_eq!(e - s, 30 * 86400 - 1);
+        assert_eq!(e, 1_790_812_800);
+        assert_eq!(e - s, 30 * 86400);
     }
 
     #[test]
