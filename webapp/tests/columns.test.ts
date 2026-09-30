@@ -10,7 +10,7 @@ import {
   statusRank,
   timerangeOf,
 } from '../src/list/columns'
-import { isViewAvailable } from '../src/rules'
+import { isDashboardAvailable, logKindOf } from '../src/rules'
 
 function row(path: string, type: 'access' | 'error' = 'access'): NginxLogRow {
   return { path, type, name: path, config_file: '' }
@@ -120,21 +120,23 @@ describe('time range', () => {
 })
 
 describe('where the views and columns appear', () => {
-  test('index columns only show for access logs', () => {
+  test('index columns show for access and error logs', () => {
     expect(showsIndexColumns({ type: 'access' })).toBe(true)
-    expect(showsIndexColumns({ type: 'error' })).toBe(false)
+    expect(showsIndexColumns({ type: 'error' })).toBe(true)
+    expect(showsIndexColumns({ type: 'site' })).toBe(false)
     expect(showsIndexColumns({})).toBe(true)
     expect(showsIndexColumns(undefined)).toBe(true)
   })
 
-  test('the structured and dashboard views are offered for access logs only', () => {
-    expect(isViewAvailable({ path: '/var/log/nginx/access.log', type: 'access' })).toBe(true)
-    expect(isViewAvailable({ path: '/var/log/nginx/access.log', type: 'error' })).toBe(false)
+  test('the dashboard is offered for access logs only', () => {
+    expect(isDashboardAvailable({ path: '/var/log/nginx/access.log', type: 'access' })).toBe(true)
+    expect(isDashboardAvailable({ path: '/var/log/nginx/access.log', type: 'error' })).toBe(false)
   })
 
   test('a site log of unknown type is judged by its path', () => {
-    expect(isViewAvailable({ path: '/var/log/nginx/site.access.log', type: 'site' })).toBe(true)
-    expect(isViewAvailable({ path: '/var/log/nginx/error.log', type: 'site' })).toBe(false)
-    expect(isViewAvailable({ path: '/var/log/nginx/site_error_log', type: 'site' })).toBe(false)
+    expect(logKindOf({ path: '/var/log/nginx/site.access.log', type: 'site' })).toBe('access')
+    expect(logKindOf({ path: '/var/log/nginx/error.log', type: 'site' })).toBe('error')
+    expect(logKindOf({ path: '/var/log/nginx/site_error_log', type: 'site' })).toBe('error')
+    expect(isDashboardAvailable({ path: '/var/log/nginx/error.log', type: 'site' })).toBe(false)
   })
 })

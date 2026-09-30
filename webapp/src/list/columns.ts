@@ -75,8 +75,13 @@ export function createStatusFilters(store: StatusReader): ColumnFilter[] {
   }))
 }
 
-/** Index columns only make sense for access logs. The host asks once per list. */
+/** Index columns show for the indexed log types. The host asks once per list. */
 export function showsIndexColumns(context: { type?: unknown } | undefined): boolean {
   const type = context?.type
-  return type === undefined || type === 'access'
+  return type === undefined || isIndexedType(type)
+}
+
+/** Access and error logs are indexed, other types are not. */
+export function isIndexedType(type: unknown): boolean {
+  return type === 'access' || type === 'error'
 }

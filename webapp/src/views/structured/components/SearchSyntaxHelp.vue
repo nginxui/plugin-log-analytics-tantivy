@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import type { LogKind } from '@/rules'
 import { QuestionCircleOutlined } from '@antdv-next/icons'
 import { Popover as APopover } from 'antdv-next'
 import { $gettext } from '@/gettext'
 import { syntaxRows } from './search-syntax'
+
+const { kind = 'access' } = defineProps<{ kind?: LogKind }>()
 </script>
 
 <template>
@@ -16,7 +19,7 @@ import { syntaxRows } from './search-syntax'
           {{ $gettext('Separate words and filters with spaces. A line has to match all of them.') }}
         </p>
         <div
-          v-for="row in syntaxRows()"
+          v-for="row in syntaxRows(kind)"
           :key="row.examples[0]"
           class="la-py-1 la-border-t la-border-gray-200 dark:la-border-trueGray-700"
         >

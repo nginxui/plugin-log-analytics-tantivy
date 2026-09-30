@@ -1,5 +1,6 @@
 // The search box syntax that the help lists. The examples are checked against
 // the parser of the plugin process, so they have to stay valid filters.
+import type { LogKind } from '@/rules'
 import { $gettext } from '@/gettext'
 
 export interface SyntaxRow {
@@ -8,7 +9,16 @@ export interface SyntaxRow {
   meaning: string
 }
 
-export function syntaxRows(): SyntaxRow[] {
+export function syntaxRows(kind: LogKind = 'access'): SyntaxRow[] {
+  if (kind === 'error') {
+    return [
+      { examples: ['level:error', 'level:warn'], meaning: $gettext('Severity of the entry: debug, info, notice, warn, error, crit, alert or emerg') },
+      { examples: ['ip:203.0.113.0/24'], meaning: $gettext('Client address or network') },
+      { examples: ['path:/upload'], meaning: $gettext('Words of the request path, in order') },
+      { examples: ['-level:notice'], meaning: $gettext('Leaves out the lines that match') },
+      { examples: ['"upstream timed out"'], meaning: $gettext('Words that appear together in this order') },
+    ]
+  }
   return [
     { examples: ['status:404', 'status:5xx', 'status:400-499'], meaning: $gettext('Status code, status class or range of codes') },
     { examples: ['method:POST'], meaning: $gettext('Request method') },

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { TableSorterResult as SorterResult, TablePaginationConfig } from 'antdv-next'
 import type { QueryWarning } from './components/search-syntax'
-import type { AccessLogEntry, AdvancedSearchRequest, IndexReadyEvent, PreflightResponse } from '@/api/types'
+import type { AccessLogEntry, AdvancedSearchRequest, ErrorLogEntry, IndexReadyEvent, PreflightResponse } from '@/api/types'
+import type { LogKind } from '@/rules'
 import { DownOutlined, ReloadOutlined } from '@antdv-next/icons'
 import {
   Alert as AAlert,
@@ -25,6 +26,7 @@ import { errorMessage, isPathError } from '@/errors'
 import { $gettext, currentLanguage } from '@/gettext'
 import { useStatus } from '@/store/status'
 import { bytesToSize } from '@/utils'
+import { emptySearchFilters } from './components/search-filter-options'
 import { warningText } from './components/search-syntax'
 import SearchFilters from './components/SearchFilters.vue'
 import { getInitialStructuredTimeRange } from './timeRange'
@@ -35,6 +37,8 @@ const { RangePicker } = DatePicker
 
 interface Props {
   logPath?: string
+  /** Kind of the log, which decides the filters and the columns. */
+  logType?: LogKind
 }
 
 interface SearchSummary {
@@ -54,6 +58,7 @@ let stopIndexReady: (() => void) | undefined
 
 // Use provided log path or let backend determine default
 const logPath = computed(() => props.logPath || undefined)
+const isErrorLog = computed(() => props.logType === 'error')
 
 // Reactive data - Only advanced search mode now
 const timeRange = ref({
@@ -61,19 +66,11 @@ const timeRange = ref({
   end: null as dayjs.Dayjs | null, // Will be set from server time range
 })
 const preflightResponse = ref<PreflightResponse | null>(null)
-const searchFilters = ref({
-  query: '',
-  ip: '',
-  method: '',
-  status: [] as string[],
-  path: '',
-  user_agent: '',
-  referer: '',
-  browser: [] as string[],
-  os: [] as string[],
-  device: [] as string[],
-})
-const searchResults = ref<AccessLogEntry[]>([])
+const searchFilters = ref(emptySearchFilters())
+// Rows carry their place in the result set as key, which keeps an expanded
+// row open while the page stays
+type ResultRow = (AccessLogEntry | ErrorLogEntry) & { key: number }
+const searchResults = ref<ResultRow[]>([])
 const searchTotal = ref(0)
 const searchLoading = ref(false)
 const indexingStatus = ref<'idle' | 'indexing' | 'indexed' | 'failed'>('idle')
@@ -210,6 +207,88 @@ function buildLocationLabel(record: AccessLogEntry): string {
   return `${baseLabel} · ${customLabel}`
 }
 
+// Colors of the error log levels, the most severe in red
+const levelColors: Record<string, string> = {
+  emerg: 'magenta',
+  alert: 'magenta',
+  crit: 'red',
+  error: 'red',
+  warn: 'orange',
+  notice: 'blue',
+  info: 'cyan',
+  debug: 'default',
+}
+
+const errorLogColumns = computed(() => [
+  {
+    title: $gettext('Time'),
+    dataIndex: 'timestamp',
+    width: 180,
+    fixed: 'left' as const,
+    sorter: true,
+    sortOrder: getSortOrder('timestamp'),
+    render: (_value: unknown, record: ErrorLogEntry) => h('span', dayjs.unix(record.timestamp).format('YYYY-MM-DD HH:mm:ss')),
+  },
+  {
+    title: $gettext('Level'),
+    dataIndex: 'level',
+    width: 90,
+    sorter: true,
+    sortOrder: getSortOrder('level'),
+    render: (_value: unknown, record: ErrorLogEntry) => h(Tag, { color: levelColors[record.level] ?? 'default' }, { default: () => record.level }),
+  },
+  {
+    title: $gettext('Message'),
+    dataIndex: 'message',
+    ellipsis: { showTitle: true },
+    render: (_value: unknown, record: ErrorLogEntry) => h('span', { class: 'la-font-mono' }, record.message),
+  },
+  {
+    title: $gettext('Client'),
+    dataIndex: 'ip',
+    width: 160,
+    sorter: true,
+    sortOrder: getSortOrder('ip'),
+    render: (_value: unknown, record: ErrorLogEntry) => record.ip ? h('span', record.ip) : null,
+  },
+  {
+    title: $gettext('Request'),
+    dataIndex: 'request',
+    ellipsis: { showTitle: true },
+    width: 300,
+    render: (_value: unknown, record: ErrorLogEntry) => record.request ? h('span', record.request) : null,
+  },
+  {
+    title: $gettext('Server'),
+    dataIndex: 'server',
+    ellipsis: true,
+    width: 180,
+    render: (_value: unknown, record: ErrorLogEntry) => record.server ? h('span', record.server) : null,
+  },
+])
+
+/** The details of an error entry that the columns leave out. */
+function errorDetails(record: ErrorLogEntry) {
+  const rows: [string, string][] = [
+    [$gettext('Upstream'), record.upstream],
+    [$gettext('Host'), record.host],
+    [$gettext('Referer'), record.referer],
+    [$gettext('Process'), record.pid ? String(record.pid) : ''],
+    [$gettext('Connection'), record.connection ? String(record.connection) : ''],
+  ]
+  return h('div', { class: 'la-space-y-2 la-text-sm' }, [
+    ...rows.filter(([, value]) => value).map(([label, value]) => h('div', { class: 'la-flex la-gap-2' }, [
+      h('span', { class: 'la-text-gray-500 dark:la-text-trueGray-400 la-shrink-0 la-w-24' }, label),
+      h('span', { class: 'la-font-mono la-break-all' }, value),
+    ])),
+    h('pre', { class: 'la-m-0 la-p-2 la-rounded la-bg-gray-100 dark:la-bg-trueGray-800 la-whitespace-pre-wrap la-break-all la-font-mono la-text-xs' }, record.raw),
+  ])
+}
+
+const expandable = computed(() => isErrorLog.value
+  ? { expandedRowRender: (record: ErrorLogEntry) => errorDetails(record) }
+  : undefined)
+
 // Table columns configuration
 const structuredLogColumns = computed(() => [
   {
@@ -328,6 +407,8 @@ const structuredLogColumns = computed(() => [
   },
 ])
 
+const tableColumns = computed(() => isErrorLog.value ? errorLogColumns.value : structuredLogColumns.value)
+
 // Time range presets (Grafana-style)
 const timePresets = [
   { key: 'last-15-minutes', label: () => $gettext('Last 15 minutes'), value: () => ({ start: dayjs().subtract(15, 'minute'), end: dayjs() }) },
@@ -367,6 +448,7 @@ async function performAdvancedSearch() {
       browser: searchFilters.value.browser.length > 0 ? searchFilters.value.browser.join(',') : undefined,
       os: searchFilters.value.os.length > 0 ? searchFilters.value.os.join(',') : undefined,
       device: searchFilters.value.device.length > 0 ? searchFilters.value.device.join(',') : undefined,
+      level: searchFilters.value.level.length > 0 ? searchFilters.value.level.join(',') : undefined,
       limit: pageSize.value,
       offset: (currentPage.value - 1) * pageSize.value,
       sort_by: sortBy.value,
@@ -376,7 +458,8 @@ async function performAdvancedSearch() {
 
     const result = await search(searchRequest)
 
-    searchResults.value = result.entries || []
+    const first = (currentPage.value - 1) * pageSize.value
+    searchResults.value = (result.entries || []).map((entry, index) => ({ ...entry, key: first + index }))
     searchTotal.value = result.total || 0
     searchSummary.value = result.summary || null
     queryWarnings.value = result.query_warnings ?? []
@@ -455,18 +538,7 @@ function applyTimePreset(preset: { value: () => { start: dayjs.Dayjs, end: dayjs
 
 // Reset search filters
 function resetSearchFilters() {
-  searchFilters.value = {
-    query: '',
-    ip: '',
-    method: '',
-    status: [],
-    path: '',
-    user_agent: '',
-    referer: '',
-    browser: [],
-    os: [],
-    device: [],
-  }
+  searchFilters.value = emptySearchFilters()
   currentPage.value = 1
   performAdvancedSearch()
 }
@@ -477,7 +549,7 @@ function resetSearchFilters() {
 function handleTableChange(
   pagination: TablePaginationConfig,
   filters: Record<string, unknown>,
-  sorter: SorterResult<AccessLogEntry> | SorterResult<AccessLogEntry>[],
+  sorter: SorterResult<AccessLogEntry | ErrorLogEntry> | SorterResult<AccessLogEntry | ErrorLogEntry>[],
 ) {
   let shouldResetPage = false
 
@@ -529,6 +601,7 @@ function mapColumnToSortField(column: string): string {
     browser: 'browser',
     os: 'os',
     device_type: 'device_type',
+    level: 'level',
   }
   return mapping[column] || 'timestamp'
 }
@@ -545,6 +618,7 @@ function getSortDisplayName(field: string): string {
     browser: $gettext('Browser'),
     os: $gettext('OS'),
     device_type: $gettext('Device'),
+    level: $gettext('Level'),
   }
   return displayNames[field] || field
 }
@@ -690,6 +764,7 @@ watch(timeRange, () => {
         <!-- Search Filters -->
         <SearchFilters
           v-model="searchFilters"
+          :kind="isErrorLog ? 'error' : 'access'"
           class="la-mb-6"
           @search="performAdvancedSearch"
           @reset="resetSearchFilters"
@@ -731,7 +806,13 @@ watch(timeRange, () => {
       <!-- Search Results (show when indexing is ready and we have search results) -->
       <div v-else-if="shouldShowResults">
         <!-- Summary -->
-        <div class="la-mb-4 la-p-4 la-bg-gray-50 dark:la-bg-trueGray-800 la-rounded">
+        <div v-if="isErrorLog" class="la-mb-4 la-p-4 la-bg-gray-50 dark:la-bg-trueGray-800 la-rounded">
+          <AStatistic
+            :title="$gettext('Total Entries')"
+            :value="searchTotal"
+          />
+        </div>
+        <div v-else class="la-mb-4 la-p-4 la-bg-gray-50 dark:la-bg-trueGray-800 la-rounded">
           <div class="la-grid la-grid-cols-2 sm:la-grid-cols-3 lg:la-grid-cols-6 la-gap-4">
             <div class="la-text-center">
               <AStatistic
@@ -807,8 +888,10 @@ watch(timeRange, () => {
               }),
             }"
             size="small"
-            :scroll="{ x: 2400 }"
-            :columns="structuredLogColumns"
+            :scroll="{ x: isErrorLog ? 1400 : 2400 }"
+            :columns="tableColumns"
+            :expandable="expandable"
+            row-key="key"
             :loading="isLoading"
             @change="handleTableChange"
           />

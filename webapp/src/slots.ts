@@ -3,7 +3,7 @@
 import type { NginxLogRow, PluginRegistry } from '@nginxui/plugin-sdk'
 import { createChunkView } from './chunk'
 import { N_ } from './gettext'
-import { createSortValues, createStatusFilters, showsIndexColumns } from './list/columns'
+import { createSortValues, createStatusFilters, isIndexedType, showsIndexColumns } from './list/columns'
 import DocumentCountCell from './list/DocumentCountCell.vue'
 import IndexStatusCell from './list/IndexStatusCell.vue'
 import LastIndexedCell from './list/LastIndexedCell.vue'
@@ -12,7 +12,7 @@ import RebuildAction from './list/RebuildAction.vue'
 import SettingsPanel from './list/SettingsPanel.vue'
 import SiteAnalyticsButton from './list/SiteAnalyticsButton.vue'
 import TimeRangeCell from './list/TimeRangeCell.vue'
-import { isViewAvailable } from './rules'
+import { isDashboardAvailable } from './rules'
 import { useStatusStore } from './store/status'
 
 export function registerSlots(registry: PluginRegistry): void {
@@ -22,13 +22,13 @@ export function registerSlots(registry: PluginRegistry): void {
     chunk: 'search',
     exportName: 'Structured',
     getLoader,
-  }), { label: N_('Structured'), order: 10, when: isViewAvailable })
+  }), { label: N_('Structured'), order: 10 })
 
   registry.registerSlot('nginx_log.view:dashboard', createChunkView({
     chunk: 'dashboard',
     exportName: 'Dashboard',
     getLoader,
-  }), { label: N_('Dashboard'), order: 20, when: isViewAvailable })
+  }), { label: N_('Dashboard'), order: 20, when: isDashboardAvailable })
 
   // The four index columns read the shared status store and render its state.
   const store = useStatusStore()
@@ -61,10 +61,10 @@ export function registerSlots(registry: PluginRegistry): void {
   })
 
   registry.registerSlot('nginx_log.list.row.actions', RebuildAction, {
-    when: ctx => (ctx.row as NginxLogRow | undefined)?.type !== 'error',
+    when: ctx => isIndexedType((ctx.row as NginxLogRow | undefined)?.type),
   })
   registry.registerSlot('nginx_log.list.toolbar', ListToolbar, {
-    when: ctx => ctx.type === undefined || ctx.type === 'access',
+    when: ctx => ctx.type === undefined || isIndexedType(ctx.type),
   })
   registry.registerSlot('site.log.actions', SiteAnalyticsButton, {
     when: ctx => Boolean(ctx.accessLogPath),

@@ -1,19 +1,22 @@
 <script setup lang="ts">
 import type { SearchFilters } from '@/api/types'
+import type { LogKind } from '@/rules'
 import { CaretRightOutlined } from '@antdv-next/icons'
 import { Button as AButton, Input as AInput, Select as ASelect } from 'antdv-next'
 import { ref } from 'vue'
 import { $gettext } from '@/gettext'
-import { browserOptions, deviceOptions, methodOptions, osOptions, statusOptions } from './search-filter-options'
+import { browserOptions, deviceOptions, emptySearchFilters, levelOptions, methodOptions, osOptions, statusOptions } from './search-filter-options'
 import SearchSyntaxHelp from './SearchSyntaxHelp.vue'
+
+const { kind = 'access' } = defineProps<{ kind?: LogKind }>()
+
+const emit = defineEmits<Emits>()
 
 // Emits
 interface Emits {
   (e: 'search'): void
   (e: 'reset'): void
 }
-
-const emit = defineEmits<Emits>()
 
 // Use defineModel for simplified v-model handling
 const filters = defineModel<SearchFilters>({ required: true })
@@ -26,18 +29,7 @@ function handleSearch() {
 }
 
 function handleReset() {
-  filters.value = {
-    query: '',
-    ip: '',
-    method: '',
-    status: [],
-    path: '',
-    user_agent: '',
-    referer: '',
-    browser: [],
-    os: [],
-    device: [],
-  }
+  filters.value = emptySearchFilters()
   emit('reset')
 }
 </script>
@@ -67,7 +59,7 @@ function handleReset() {
         <div class="lg:la-col-span-2">
           <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">
             {{ $gettext('Full Text Search') }}
-            <SearchSyntaxHelp />
+            <SearchSyntaxHelp :kind="kind" />
           </label>
           <AInput
             v-model:value="filters.query"
@@ -89,8 +81,35 @@ function handleReset() {
         </div>
       </div>
 
+      <!-- Error log: level and request path -->
+      <div v-if="kind === 'error'" class="la-grid la-grid-cols-1 md:la-grid-cols-3 la-gap-3">
+        <div>
+          <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">
+            {{ $gettext('Level') }}
+          </label>
+          <ASelect
+            v-model:value="filters.level"
+            mode="multiple"
+            :placeholder="$gettext('Any')"
+            allow-clear
+            style="width: 100%"
+            :options="levelOptions"
+          />
+        </div>
+        <div class="md:la-col-span-2">
+          <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">
+            {{ $gettext('Request Path') }}
+          </label>
+          <AInput
+            v-model:value="filters.path"
+            placeholder="/"
+            @press-enter="handleSearch"
+          />
+        </div>
+      </div>
+
       <!-- Row 2: Request Details -->
-      <div class="la-grid la-grid-cols-1 md:la-grid-cols-2 lg:la-grid-cols-4 la-gap-3">
+      <div v-if="kind === 'access'" class="la-grid la-grid-cols-1 md:la-grid-cols-2 lg:la-grid-cols-4 la-gap-3">
         <!-- HTTP Method -->
         <div>
           <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">
@@ -135,7 +154,7 @@ function handleReset() {
       </div>
 
       <!-- Row 3: Client Info -->
-      <div class="la-grid la-grid-cols-1 md:la-grid-cols-2 lg:la-grid-cols-4 la-gap-3">
+      <div v-if="kind === 'access'" class="la-grid la-grid-cols-1 md:la-grid-cols-2 lg:la-grid-cols-4 la-gap-3">
         <!-- Browser -->
         <div>
           <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">
@@ -198,7 +217,7 @@ function handleReset() {
       </div>
 
       <!-- Row 4: Advanced -->
-      <div class="la-grid la-grid-cols-1 la-gap-3">
+      <div v-if="kind === 'access'" class="la-grid la-grid-cols-1 la-gap-3">
         <!-- User Agent -->
         <div>
           <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">

@@ -193,12 +193,15 @@ suite('built bundles', () => {
     expect(slot('nginx_log.view:dashboard').options.label).toBe('Dashboard')
   })
 
-  test('the views are not offered for error logs, the toolbar only for access logs', () => {
-    const when = slot('nginx_log.view:structured').options.when as (ctx: unknown) => boolean
-    expect(when({ path: '/var/log/nginx/access.log', type: 'access' })).toBe(true)
-    expect(when({ path: '/var/log/nginx/error.log', type: 'error' })).toBe(false)
+  test('error logs get the structured view but no dashboard, the toolbar shows for both kinds', () => {
+    expect(slot('nginx_log.view:structured').options.when).toBeUndefined()
+    const dashboard = slot('nginx_log.view:dashboard').options.when as (ctx: unknown) => boolean
+    expect(dashboard({ path: '/var/log/nginx/access.log', type: 'access' })).toBe(true)
+    expect(dashboard({ path: '/var/log/nginx/error.log', type: 'error' })).toBe(false)
     const toolbar = slot('nginx_log.list.toolbar').options.when as (ctx: unknown) => boolean
-    expect(toolbar({ type: 'error' })).toBe(false)
+    expect(toolbar({ type: 'access' })).toBe(true)
+    expect(toolbar({ type: 'error' })).toBe(true)
+    expect(toolbar({ type: 'site' })).toBe(false)
     expect(slot('site.log.actions').options.when).toBeDefined()
   })
 
@@ -258,8 +261,13 @@ suite('built bundles', () => {
 
     const error = mount(slot('nginx_log.list.toolbar').component, { type: 'error' })
     await flush()
-    expect(error.root.textContent).toBe('')
+    expect(error.root.textContent).toContain('重建所有索引')
     error.app.unmount()
+
+    const other = mount(slot('nginx_log.list.toolbar').component, { type: 'site' })
+    await flush()
+    expect(other.root.textContent).toBe('')
+    other.app.unmount()
   })
 
   test('the structured view loads its chunk, warms the backend and renders', async () => {
@@ -354,11 +362,12 @@ suite('built bundles', () => {
     own.app.unmount()
   })
 
-  test('the index columns are decided per list: access only', () => {
+  test('the index columns are decided per list: access and error logs', () => {
     for (const name of ['index_status', 'last_indexed', 'document_count', 'timerange']) {
       const when = slot(`nginx_log.list.column:${name}`).options.when as (ctx: unknown) => boolean
       expect(when({ type: 'access' })).toBe(true)
-      expect(when({ type: 'error' })).toBe(false)
+      expect(when({ type: 'error' })).toBe(true)
+      expect(when({ type: 'site' })).toBe(false)
     }
   })
 })

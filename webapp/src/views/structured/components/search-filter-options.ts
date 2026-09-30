@@ -1,3 +1,5 @@
+import type { SearchFilters } from '@/api/types'
+
 export interface SelectOption {
   value: string
   label?: string
@@ -161,3 +163,32 @@ export const methodOptions: SelectOption[] = [
   { value: 'HEAD' },
   { value: 'OPTIONS' },
 ]
+
+/** Severity levels of the nginx error log, from the highest. */
+export const levelOptions: SelectOption[] = [
+  { value: 'emerg' },
+  { value: 'alert' },
+  { value: 'crit' },
+  { value: 'error' },
+  { value: 'warn' },
+  { value: 'notice' },
+  { value: 'info' },
+  { value: 'debug' },
+]
+
+/** Filters that match every line. */
+export function emptySearchFilters(): SearchFilters {
+  return {
+    query: '',
+    ip: '',
+    method: '',
+    status: [],
+    path: '',
+    user_agent: '',
+    referer: '',
+    browser: [],
+    os: [],
+    device: [],
+    level: [],
+  }
+}

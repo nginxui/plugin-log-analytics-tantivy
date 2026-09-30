@@ -83,6 +83,26 @@ export interface SearchFilters {
   browser: string[]
   os: string[]
   device: string[]
+  /** Error log levels. */
+  level: string[]
+}
+
+/** One error log entry, as the search returns it. */
+export interface ErrorLogEntry {
+  timestamp: number
+  level: string
+  pid: number
+  connection: number
+  message: string
+  ip: string
+  server: string
+  request: string
+  method: string
+  path: string
+  upstream: string
+  host: string
+  referer: string
+  raw: string
 }
 
 export interface AdvancedSearchRequest {
@@ -98,6 +118,8 @@ export interface AdvancedSearchRequest {
   browser?: string
   os?: string
   device?: string
+  /** Error log levels, comma separated. */
+  level?: string
   limit?: number
   offset?: number
   sort_by?: string
@@ -116,7 +138,7 @@ export interface SummaryStats {
 }
 
 export interface AdvancedSearchResponse {
-  entries: AccessLogEntry[]
+  entries: (AccessLogEntry | ErrorLogEntry)[]
   total: number
   took: number
   query: string

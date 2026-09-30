@@ -35,7 +35,7 @@ function confirmRebuild() {
 
 <template>
   <AButton
-    v-if="row.type === 'access'"
+    v-if="row.type === 'access' || row.type === 'error'"
     type="link"
     size="small"
     :disabled="store.isIndexing()"

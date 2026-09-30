@@ -52,7 +52,7 @@ function confirmRebuild() {
 </script>
 
 <template>
-  <div v-if="type === 'access'" class="la-flex la-items-center la-gap-4">
+  <div v-if="type === 'access' || type === 'error'" class="la-flex la-items-center la-gap-4">
     <span v-if="summary && !indexing" class="la-text-sm la-text-gray-500 dark:la-text-gray-400">{{ summary }}</span>
 
     <!-- Global indexing progress -->

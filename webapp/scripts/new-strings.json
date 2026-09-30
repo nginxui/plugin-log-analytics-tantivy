@@ -193,5 +193,20 @@
     "zh_CN": "按此顺序相邻出现的词",
     "zh_TW": "按此順序相鄰出現的詞",
     "ja_JP": "この順序で連続して現れる語"
+  },
+  "Client": {
+    "zh_CN": "客户端",
+    "zh_TW": "用戶端",
+    "ja_JP": "クライアント"
+  },
+  "Level": {
+    "zh_CN": "级别",
+    "zh_TW": "等級",
+    "ja_JP": "レベル"
+  },
+  "Severity of the entry: debug, info, notice, warn, error, crit, alert or emerg": {
+    "zh_CN": "条目的级别：debug、info、notice、warn、error、crit、alert 或 emerg",
+    "zh_TW": "條目的等級：debug、info、notice、warn、error、crit、alert 或 emerg",
+    "ja_JP": "エントリのレベル: debug、info、notice、warn、error、crit、alert、emerg のいずれか"
   }
 }
