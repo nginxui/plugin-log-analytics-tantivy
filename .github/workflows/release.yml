@@ -7,7 +7,7 @@ name: Release
 #
 # Three stages with separate privileges:
 #   build    one native job per platform, read only, no secrets
-#   package  builds the webapp, packages and signs, holds the signing key
+#   package  takes the webapp release, packages and signs, holds the signing key
 #            through the "release" environment, read only
 #   publish  creates the GitHub release, the only job that can write
 #
@@ -138,15 +138,7 @@ jobs:
           path: plugin-sdk-rust
           persist-credentials: false
 
-      - uses: actions/checkout@v4
-        with:
-          repository: nginxui/plugin-sdk-web
-          path: plugin-sdk-web
-          persist-credentials: false
-
       - uses: dtolnay/rust-toolchain@stable
-
-      - uses: oven-sh/setup-bun@v2
 
       - name: Check that the tag matches plugin.json and Cargo.toml
         run: |
@@ -162,17 +154,9 @@ jobs:
             exit 1
           fi
 
-      - name: Build the web SDK
-        working-directory: plugin-sdk-web
-        run: |
-          bun install --frozen-lockfile
-          bun run build
-
-      - name: Build the webapp bundle
-        working-directory: plugin-log-analytics-tantivy/webapp
-        run: |
-          bun install --frozen-lockfile
-          bun run build
+      # Downloads the webapp release webapp.lock names and checks its checksum
+      - name: Take the webapp release
+        run: ./build.sh --webapp-only
 
       - name: plugin.json is up to date
         run: |

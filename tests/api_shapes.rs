@@ -1,5 +1,6 @@
 //! Every endpoint answers with the keys and kinds the web pages declare in
-//! `webapp/src/api/types.ts`.
+//! `src/api/types.ts` of plugin-log-analytics-webapp, read from a sibling
+//! checkout or from `LOG_ANALYTICS_WEBAPP_DIR`.
 
 mod common;
 
@@ -20,7 +21,10 @@ type Interfaces = HashMap<String, HashMap<String, Field>>;
 /// Reads the interfaces of types.ts. Only the fields at the top level of an
 /// interface are read, which is what the pages declare.
 fn parse_types() -> Interfaces {
-    let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/webapp/src/api/types.ts")).unwrap();
+    let path = webapp_dir().join("src/api/types.ts");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!("{}: {e}; check out plugin-log-analytics-webapp next to this repository", path.display())
+    });
     let mut out: Interfaces = HashMap::new();
     let mut current: Option<String> = None;
     let mut depth = 0i32;

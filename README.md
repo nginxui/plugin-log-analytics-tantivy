@@ -127,10 +127,15 @@ cargo test                                   # unit and integration tests
 cargo test --release --test perf_dataset -- --ignored --nocapture
 cargo clippy --all-targets -- -D warnings
 cargo run --bin manifest                     # regenerate plugin.json
-(cd webapp && bun install && bun run build)  # the browser bundle
+./build.sh --webapp-only                     # take the webapp into webapp/dist
 ./build.sh                                   # the packages in dist/
 ./build.sh --prebuilt DIR                    # package executables built elsewhere
+./build.sh --webapp ARCHIVE                  # package another webapp build
 ```
+
+The tests read the webapp source from a checkout of
+`plugin-log-analytics-webapp` next to this repository, or from
+`LOG_ANALYTICS_WEBAPP_DIR`.
 
 ## Releases
 
@@ -144,6 +149,13 @@ archives and their `.sha256` files as a GitHub release. The notes come from the
 matching section of `CHANGELOG.md`, and a version with a prerelease part such
 as `0.1.0-beta.1` is marked as a prerelease.
 
-`webapp/` is a copy of the web pages of `com.nginxui.log-analytics`. Only the
-plugin id in `webapp/build.constants.ts` differs, and the runtime and asset keys
-follow it.
+## Webapp
+
+The web pages come from `plugin-log-analytics-webapp`, which both log analytics
+plugins share. Its release archive holds one build per plugin id, and
+`webapp.lock` names the release this plugin packages with its checksum.
+`build.sh` takes the archive from `--webapp`, from a sibling checkout
+(`../plugin-log-analytics-webapp/release`) or from the release download, and
+unpacks the build of this plugin into `webapp/dist`. Features the Go plugin
+lacks are announced in the `features` of the preflight answer, such as the
+search syntax help.

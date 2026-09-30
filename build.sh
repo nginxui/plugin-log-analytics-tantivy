@@ -4,14 +4,20 @@
 #   ./build.sh              every platform whose Rust target is installed
 #   ./build.sh --host-only  the platform of this machine only
 #   ./build.sh --prebuilt DIR  package executables built elsewhere
+#   ./build.sh --webapp ARCHIVE  package this webapp archive
+#   ./build.sh --webapp-only  only take the webapp into webapp/dist
 #
 # Every platform gets its own package, dist/<id>-<version>-<os>-<arch>.tar.gz,
 # with one executable and a plugin.json whose server.executables names only that
 # platform (plugin spec PKG-12). A <archive>.sha256 file sits next to each
 # archive for the catalog.
 #
-# The browser bundle has to be built first (cd webapp && bun install && bun run
-# build): the packages carry webapp/dist, with the chunks and the map and
+# The browser bundle comes from plugin-log-analytics-webapp, which builds it
+# for both log analytics plugins. webapp.lock names the release and its
+# checksum. The archive is, in this order, the one --webapp names, the one built
+# in a sibling checkout (../plugin-log-analytics-webapp/release), or the release
+# download, which must match the checksum. The build of this plugin is taken
+# into webapp/dist: the packages carry it with the chunks and the map and
 # country files the bundle loads on demand.
 #
 # Native targets build with cargo, the others with cargo zigbuild. A platform
@@ -53,18 +59,29 @@ PLATFORMS=(
   "windows-arm64|aarch64-pc-windows-gnullvm|zigbuild"
 )
 
-USAGE="usage: $0 [--host-only] [--prebuilt DIR]"
+USAGE="usage: $0 [--host-only] [--prebuilt DIR] [--webapp ARCHIVE] [--webapp-only]"
 HOST_ONLY=0
+WEBAPP_ONLY=0
 PREBUILT=""
+WEBAPP_ARCHIVE="${WEBAPP_ARCHIVE:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host-only) HOST_ONLY=1 ;;
+    --webapp-only) WEBAPP_ONLY=1 ;;
     --prebuilt)
       if [[ $# -lt 2 ]]; then
         echo "${USAGE}" >&2
         exit 2
       fi
       PREBUILT="$2"
+      shift
+      ;;
+    --webapp)
+      if [[ $# -lt 2 ]]; then
+        echo "${USAGE}" >&2
+        exit 2
+      fi
+      WEBAPP_ARCHIVE="$2"
       shift
       ;;
     -h | --help)
@@ -102,12 +119,44 @@ fi
 
 cd "${ROOT}"
 
+# The webapp of this plugin, taken from the release archive into webapp/dist.
+WEBAPP_VERSION="$(sed -n 's/^version=//p' webapp.lock)"
+WEBAPP_SHA256="$(sed -n 's/^sha256=//p' webapp.lock)"
+WEBAPP_NAME="plugin-log-analytics-webapp-${WEBAPP_VERSION}.tar.gz"
+if [[ -z "${WEBAPP_ARCHIVE}" && -f "../plugin-log-analytics-webapp/release/${WEBAPP_NAME}" ]]; then
+  WEBAPP_ARCHIVE="../plugin-log-analytics-webapp/release/${WEBAPP_NAME}"
+fi
+if [[ -z "${WEBAPP_ARCHIVE}" ]]; then
+  WEBAPP_ARCHIVE="${DIST}/${WEBAPP_NAME}"
+  mkdir -p "${DIST}"
+  curl -fsSL -o "${WEBAPP_ARCHIVE}" \
+    "https://github.com/nginxui/plugin-log-analytics-webapp/releases/download/v${WEBAPP_VERSION}/${WEBAPP_NAME}"
+  actual="$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)"
+  if [[ "${actual}" != "${WEBAPP_SHA256}" ]]; then
+    echo "the webapp archive does not match webapp.lock: ${actual}" >&2
+    exit 1
+  fi
+fi
+if [[ ! -f "${WEBAPP_ARCHIVE}" ]]; then
+  echo "no webapp archive at ${WEBAPP_ARCHIVE}" >&2
+  exit 1
+fi
+echo "webapp: ${WEBAPP_ARCHIVE}"
+rm -rf webapp/dist "${DIST}/webapp"
+mkdir -p webapp "${DIST}/webapp"
+tar -xzf "${WEBAPP_ARCHIVE}" -C "${DIST}/webapp" "${PLUGIN_ID}"
+mv "${DIST}/webapp/${PLUGIN_ID}" webapp/dist
+rm -rf "${DIST}/webapp"
+
 for file in main.js style.css icon.svg chunks/search.js chunks/dashboard.js manifest.webapp.json; do
   if [[ ! -f "webapp/dist/${file}" ]]; then
-    echo "webapp/dist/${file} is missing, build the webapp first: cd webapp && bun install && bun run build" >&2
+    echo "webapp/dist/${file} is missing from the webapp archive" >&2
     exit 1
   fi
 done
+if [[ "${WEBAPP_ONLY}" == 1 ]]; then
+  exit 0
+fi
 
 # The manifest is generated from the code and the bundle, see src/manifest.rs.
 cargo run --quiet --release --bin manifest

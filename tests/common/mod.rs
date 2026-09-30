@@ -13,6 +13,14 @@ use plugin_log_analytics_tantivy::logs::HostLog;
 use plugin_log_analytics_tantivy::sizing::Sizing;
 use tantivy::query::AllQuery;
 
+/// The source of plugin-log-analytics-webapp: `LOG_ANALYTICS_WEBAPP_DIR`, or a
+/// checkout next to this repository.
+pub fn webapp_dir() -> PathBuf {
+    std::env::var_os("LOG_ANALYTICS_WEBAPP_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugin-log-analytics-webapp"))
+}
+
 /// A test bed: a log folder and an engine with its index beside it.
 pub struct Bed {
     pub root: tempfile::TempDir,

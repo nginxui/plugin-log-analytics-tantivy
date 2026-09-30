@@ -1,10 +1,10 @@
 name: CI
 
 # Runs on every pull request and on main. The plugin depends on the Rust SDK
-# through a path (../plugin-sdk-rust) and the webapp on the web SDK through
-# file:../../plugin-sdk-web, so both SDK repositories are checked out next to
-# this one. Drop those checkouts once the SDKs are published and the local
-# paths are gone.
+# through a path (../plugin-sdk-rust), so it is checked out next to this one;
+# drop that checkout once the SDK is published. The webapp comes from
+# plugin-log-analytics-webapp: the tests read its source at the release that
+# webapp.lock names, and the packages carry that release.
 on:
   pull_request:
   push:
@@ -36,6 +36,18 @@ jobs:
           repository: nginxui/plugin-sdk-rust
           path: plugin-sdk-rust
 
+      # The API shape and search syntax tests read the webapp source of the
+      # release this plugin packages.
+      - name: Read webapp.lock
+        id: webapp
+        run: echo "version=$(sed -n 's/^version=//p' webapp.lock)" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-log-analytics-webapp
+          ref: v${{ steps.webapp.outputs.version }}
+          path: plugin-log-analytics-webapp
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -52,7 +64,7 @@ jobs:
       # debug info). The perf dataset test is ignored and stays out of CI.
       - run: cargo test --locked
 
-  webapp:
+  manifest:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -67,39 +79,19 @@ jobs:
           repository: nginxui/plugin-sdk-rust
           path: plugin-sdk-rust
 
-      - uses: actions/checkout@v4
-        with:
-          repository: nginxui/plugin-sdk-web
-          path: plugin-sdk-web
-
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: plugin-log-analytics-tantivy
 
-      - uses: oven-sh/setup-bun@v2
-
-      # The webapp resolves @nginxui/plugin-sdk to the SDK checkout, whose
-      # package exports point at dist/, so the SDK is built first.
-      - name: Build the web SDK
-        working-directory: plugin-sdk-web
-        run: |
-          bun install --frozen-lockfile
-          bun run build
-
-      - name: Webapp checks and bundle
-        working-directory: plugin-log-analytics-tantivy/webapp
-        run: |
-          bun install --frozen-lockfile
-          bun run typecheck
-          bun run lint
-          bun test tests
-          bun run build
+      # Downloads the webapp release webapp.lock names and checks its checksum
+      - name: Take the webapp release
+        run: ./build.sh --webapp-only
 
       # plugin.json is committed and the catalog reads it from the release
       # tag, so it must be what the manifest binary generates from the code
-      # and the webapp fragment of the bundle built above.
+      # and the webapp fragment of the release.
       - name: plugin.json is up to date
         run: |
           cargo run --locked --quiet --bin manifest -- -out "${RUNNER_TEMP}/plugin.json" >/dev/null

@@ -193,6 +193,22 @@ pub struct PreflightResponse {
     pub time_range: Option<TimeRange>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_info: Option<FileInfo>,
+    /// What this plugin supports beyond the API of the Go plugin, so the
+    /// shared webapp can offer it.
+    pub features: Features,
+}
+
+/// Features of this plugin the webapp asks for.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct Features {
+    /// The search box reads field filters such as `status:5xx`.
+    pub query_syntax: bool,
+}
+
+impl Default for Features {
+    fn default() -> Self {
+        Features { query_syntax: true }
+    }
 }
 
 fn missing_file() -> FileInfo {
@@ -218,6 +234,7 @@ pub fn preflight(engine: &Engine, log_path: &str) -> PreflightResponse {
 
     if path.is_empty() {
         return PreflightResponse {
+            features: Features::default(),
             available: true,
             index_status: NOT_INDEXED.to_owned(),
             message: String::new(),
@@ -227,6 +244,7 @@ pub fn preflight(engine: &Engine, log_path: &str) -> PreflightResponse {
     }
     if !engine.hostlogs.is_valid_path(&path) {
         return PreflightResponse {
+            features: Features::default(),
             available: false,
             index_status: ERROR.to_owned(),
             message: format!("Invalid log path: {path}"),
@@ -239,6 +257,7 @@ pub fn preflight(engine: &Engine, log_path: &str) -> PreflightResponse {
     match std::fs::metadata(&cleaned) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => match indexed_group(&cleaned) {
             Some((_, range)) => PreflightResponse {
+                features: Features::default(),
                 available: true,
                 index_status: INDEXED.to_owned(),
                 message: "File indexed (historical data available)".to_owned(),
@@ -246,6 +265,7 @@ pub fn preflight(engine: &Engine, log_path: &str) -> PreflightResponse {
                 file_info: Some(missing_file()),
             },
             None => PreflightResponse {
+                features: Features::default(),
                 available: false,
                 index_status: NOT_INDEXED.to_owned(),
                 message: "Log file does not exist".to_owned(),
@@ -254,6 +274,7 @@ pub fn preflight(engine: &Engine, log_path: &str) -> PreflightResponse {
             },
         },
         Err(e) => PreflightResponse {
+            features: Features::default(),
             available: false,
             index_status: ERROR.to_owned(),
             message: format!("Cannot access log file {cleaned}: {e}"),
@@ -270,6 +291,7 @@ pub fn preflight(engine: &Engine, log_path: &str) -> PreflightResponse {
             let group = engine.hostlogs.group_of(&cleaned);
             let known = group.as_ref().is_some_and(|g| engine.state().group(&g.path).is_some());
             let mut response = PreflightResponse {
+                features: Features::default(),
                 available: false,
                 index_status: NOT_INDEXED.to_owned(),
                 message: String::new(),

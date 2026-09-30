@@ -1,5 +1,5 @@
 /target
 /dist
-/webapp/node_modules
-/webapp/dist
+# The webapp comes from plugin-log-analytics-webapp, see build.sh
+/webapp
 *.noindex

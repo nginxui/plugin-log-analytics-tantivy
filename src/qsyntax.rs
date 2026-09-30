@@ -487,8 +487,13 @@ mod tests {
 
     #[test]
     fn the_examples_of_the_help_are_valid_filters() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/webapp/src/views/structured/components/search-syntax.ts");
-        let Ok(source) = std::fs::read_to_string(path) else { return };
+        // The help lives in plugin-log-analytics-webapp, a sibling checkout
+        let dir = std::env::var_os("LOG_ANALYTICS_WEBAPP_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugin-log-analytics-webapp"));
+        let Ok(source) = std::fs::read_to_string(dir.join("src/views/structured/components/search-syntax.ts")) else {
+            return;
+        };
         let list = regex::Regex::new(r"examples: \[([^\]]*)\]").unwrap();
         let quoted = regex::Regex::new(r"'([^']*)'").unwrap();
         let mut seen = 0;
