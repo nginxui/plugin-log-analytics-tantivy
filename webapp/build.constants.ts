@@ -1,1 +1,1 @@
-export const PLUGIN_ID = 'com.nginxui.log-analytics-rs'
+export const PLUGIN_ID = 'com.nginxui.log-analytics-tantivy'

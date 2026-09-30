@@ -69,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: plugin-log-analytics-rs
+          path: plugin-log-analytics-tantivy
           persist-credentials: false
 
       - uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
 
       - name: Build the executable
         shell: bash
-        working-directory: plugin-log-analytics-rs
+        working-directory: plugin-log-analytics-tantivy
         env:
           KEY: ${{ matrix.key }}
           TARGET: ${{ matrix.target }}
@@ -99,13 +99,13 @@ jobs:
           if [[ "${TARGET}" == *linux-musl ]]; then
             export "CC_${TARGET//-/_}=musl-gcc"
           fi
-          cargo build --locked --release --target "${TARGET}" --bin log-analytics-rs
+          cargo build --locked --release --target "${TARGET}" --bin log-analytics-tantivy
           ext=""
           if [[ "${KEY}" == windows-* ]]; then
             ext=".exe"
           fi
           mkdir -p "${RUNNER_TEMP}/out"
-          cp "target/${TARGET}/release/log-analytics-rs${ext}" "${RUNNER_TEMP}/out/log-analytics-rs-${KEY}${ext}"
+          cp "target/${TARGET}/release/log-analytics-tantivy${ext}" "${RUNNER_TEMP}/out/log-analytics-tantivy-${KEY}${ext}"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -125,11 +125,11 @@ jobs:
       has_notes: ${{ steps.meta.outputs.has_notes }}
     defaults:
       run:
-        working-directory: plugin-log-analytics-rs
+        working-directory: plugin-log-analytics-tantivy
     steps:
       - uses: actions/checkout@v4
         with:
-          path: plugin-log-analytics-rs
+          path: plugin-log-analytics-tantivy
           persist-credentials: false
 
       - uses: actions/checkout@v4
@@ -169,7 +169,7 @@ jobs:
           bun run build
 
       - name: Build the webapp bundle
-        working-directory: plugin-log-analytics-rs/webapp
+        working-directory: plugin-log-analytics-tantivy/webapp
         run: |
           bun install --frozen-lockfile
           bun run build
@@ -262,9 +262,9 @@ jobs:
         with:
           name: release-files
           path: |
-            plugin-log-analytics-rs/dist/*.tar.gz
-            plugin-log-analytics-rs/dist/*.tar.gz.sha256
-            plugin-log-analytics-rs/dist/notes.md
+            plugin-log-analytics-tantivy/dist/*.tar.gz
+            plugin-log-analytics-tantivy/dist/*.tar.gz.sha256
+            plugin-log-analytics-tantivy/dist/notes.md
           if-no-files-found: error
           retention-days: 7
 

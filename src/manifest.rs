@@ -10,12 +10,12 @@ use nginxui_plugin_sdk::protocol::{
 };
 use serde_json::{json, Value};
 
-pub const PLUGIN_ID: &str = "com.nginxui.log-analytics-rs";
+pub const PLUGIN_ID: &str = "com.nginxui.log-analytics-tantivy";
 /// The plugin of the same pages and routes this one replaces.
 pub const CONFLICTING_PLUGIN: &str = "com.nginxui.log-analytics";
-pub const PLUGIN_NAME: &str = "Log Analytics";
+pub const PLUGIN_NAME: &str = "Log Analytics (Preview)";
 pub const PLUGIN_DESCRIPTION: &str =
-    "Search nginx access logs with structured queries and see traffic on a dashboard with a visitor map.";
+    "Search nginx access logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. This preview cannot be enabled together with Log Analytics.";
 pub const MIN_NGINX_UI_VERSION: &str = "2.7.0";
 /// Memory in MiB advised for the machine. The smallest tier of the indexer
 /// (50 MB writer, one thread) indexed 1.4 million lines within 160 MB of
@@ -24,7 +24,7 @@ pub const MIN_NGINX_UI_VERSION: &str = "2.7.0";
 pub const RECOMMENDED_MEMORY_MB: i32 = 256;
 
 /// Prefix of the packaged executables.
-pub const BINARY_PREFIX: &str = "log-analytics-rs";
+pub const BINARY_PREFIX: &str = "log-analytics-tantivy";
 
 pub const BUNDLE_PATH: &str = "webapp/dist/main.js";
 pub const STYLE_PATH: &str = "webapp/dist/style.css";
@@ -74,11 +74,11 @@ pub fn build(shared: HashMap<String, String>) -> Manifest {
         api_version: 1,
         min_nginx_ui_version: MIN_NGINX_UI_VERSION.to_owned(),
         i18n: HashMap::from([
-            ("zh_CN".to_owned(), translation("日志分析", "对 Nginx 访问日志做结构化搜索，在面板和访客地图上查看流量。")),
-            ("zh_TW".to_owned(), translation("日誌分析", "對 Nginx 存取日誌做結構化搜尋，在面板和訪客地圖上檢視流量。")),
+            ("zh_CN".to_owned(), translation("日志分析（预览）", "对 Nginx 访问日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。预览版，不能与“日志分析”同时启用。")),
+            ("zh_TW".to_owned(), translation("日誌分析（預覽）", "對 Nginx 存取日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。預覽版，不能與「日誌分析」同時啟用。")),
             (
                 "ja_JP".to_owned(),
-                translation("ログ分析", "Nginx のアクセスログを構造化検索し、ダッシュボードと訪問者マップでトラフィックを確認します。"),
+                translation("ログ分析（プレビュー）", "Nginx のアクセスログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。プレビュー版のため、「ログ分析」と同時に有効にできません。"),
             ),
         ]),
         server: Some(ManifestServer {
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn identity_and_conflict() {
         let m = build(HashMap::new());
-        assert_eq!(m.id, "com.nginxui.log-analytics-rs");
+        assert_eq!(m.id, "com.nginxui.log-analytics-tantivy");
         assert_eq!(m.version, "0.1.0-beta.1");
         assert_eq!(m.conflicts, ["com.nginxui.log-analytics"]);
         assert_eq!(m.capabilities, ["http"]);
@@ -226,7 +226,18 @@ mod tests {
 
     #[test]
     fn user_facing_text_names_no_engine_or_language() {
-        let text = render(&build(HashMap::new())).to_lowercase();
+        // The id and the file names may name the engine, what people read may not
+        let m = build(HashMap::new());
+        let mut shown = vec![m.name.clone(), m.description.clone()];
+        for t in m.i18n.values() {
+            shown.push(t.name.clone());
+            shown.push(t.description.clone());
+        }
+        for field in m.settings_schema.iter().flat_map(|s| &s.settings) {
+            shown.push(field.display_name.clone());
+            shown.push(field.help_text.clone());
+        }
+        let text = shown.join("\n").to_lowercase();
         for word in ["tantivy", "bleve", "rust", "golang", "lucene"] {
             assert!(!text.contains(word), "{word} in the manifest");
         }
@@ -237,16 +248,16 @@ mod tests {
         let shared = HashMap::from([("vue".to_owned(), ">=3".to_owned()), ("pinia".to_owned(), ">=4".to_owned())]);
         let a = render(&build(shared.clone()));
         assert_eq!(a, render(&build(shared)));
-        assert!(a.starts_with("{\n  \"id\": \"com.nginxui.log-analytics-rs\""));
+        assert!(a.starts_with("{\n  \"id\": \"com.nginxui.log-analytics-tantivy\""));
         assert!(a.find("\"pinia\"").unwrap() < a.find("\"vue\"").unwrap());
 
         let narrowed = narrow(&a, "linux-amd64").unwrap();
         let v: Value = serde_json::from_str(&narrowed).unwrap();
         let exes = v["server"]["executables"].as_object().unwrap();
         assert_eq!(exes.len(), 1);
-        assert_eq!(exes["linux-amd64"], "server/dist/log-analytics-rs-linux-amd64");
+        assert_eq!(exes["linux-amd64"], "server/dist/log-analytics-tantivy-linux-amd64");
         assert!(narrow(&a, "plan9-amd64").is_err());
-        assert_eq!(executable_path("windows", "arm64"), "server/dist/log-analytics-rs-windows-arm64.exe");
+        assert_eq!(executable_path("windows", "arm64"), "server/dist/log-analytics-tantivy-windows-arm64.exe");
     }
 
     #[test]

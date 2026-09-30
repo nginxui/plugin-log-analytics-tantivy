@@ -12,11 +12,11 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use plugin_log_analytics_rs::config::Dirs;
-use plugin_log_analytics_rs::engine::{Engine, Scope};
-use plugin_log_analytics_rs::logs::HostLog;
-use plugin_log_analytics_rs::sizing;
-use plugin_log_analytics_rs::sys;
+use plugin_log_analytics_tantivy::config::Dirs;
+use plugin_log_analytics_tantivy::engine::{Engine, Scope};
+use plugin_log_analytics_tantivy::logs::HostLog;
+use plugin_log_analytics_tantivy::sizing;
+use plugin_log_analytics_tantivy::sys;
 
 #[cfg(not(any(windows, sysalloc)))]
 #[global_allocator]

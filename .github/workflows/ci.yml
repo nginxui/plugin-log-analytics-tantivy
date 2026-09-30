@@ -25,11 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: plugin-log-analytics-rs
+        working-directory: plugin-log-analytics-tantivy
     steps:
       - uses: actions/checkout@v4
         with:
-          path: plugin-log-analytics-rs
+          path: plugin-log-analytics-tantivy
 
       - uses: actions/checkout@v4
         with:
@@ -42,7 +42,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: plugin-log-analytics-rs
+          workspaces: plugin-log-analytics-tantivy
 
       - run: cargo fmt --all --check
 
@@ -56,11 +56,11 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: plugin-log-analytics-rs
+        working-directory: plugin-log-analytics-tantivy
     steps:
       - uses: actions/checkout@v4
         with:
-          path: plugin-log-analytics-rs
+          path: plugin-log-analytics-tantivy
 
       - uses: actions/checkout@v4
         with:
@@ -76,7 +76,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: plugin-log-analytics-rs
+          workspaces: plugin-log-analytics-tantivy
 
       - uses: oven-sh/setup-bun@v2
 
@@ -89,7 +89,7 @@ jobs:
           bun run build
 
       - name: Webapp checks and bundle
-        working-directory: plugin-log-analytics-rs/webapp
+        working-directory: plugin-log-analytics-tantivy/webapp
         run: |
           bun install --frozen-lockfile
           bun run typecheck

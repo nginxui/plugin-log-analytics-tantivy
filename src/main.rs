@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use nginxui_plugin_sdk::protocol::event;
 use nginxui_plugin_sdk::{env, Options, Plugin};
-use plugin_log_analytics_rs::api;
-use plugin_log_analytics_rs::app::App;
-use plugin_log_analytics_rs::sys;
+use plugin_log_analytics_tantivy::api;
+use plugin_log_analytics_tantivy::app::App;
+use plugin_log_analytics_tantivy::sys;
 
 // The C allocator does not build for Windows with zig, which has a good heap of its own
 #[cfg(not(windows))]

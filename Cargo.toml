@@ -1,5 +1,5 @@
 [package]
-name = "plugin-log-analytics-rs"
+name = "plugin-log-analytics-tantivy"
 version = "0.1.0-beta.1"
 edition = "2021"
 rust-version = "1.88"
@@ -8,7 +8,7 @@ license = "AGPL-3.0-only"
 publish = false
 
 [[bin]]
-name = "log-analytics-rs"
+name = "log-analytics-tantivy"
 path = "src/main.rs"
 
 [dependencies]

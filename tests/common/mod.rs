@@ -6,11 +6,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use plugin_log_analytics_rs::collectors::TermCounts;
-use plugin_log_analytics_rs::config::Dirs;
-use plugin_log_analytics_rs::engine::{Engine, Scope};
-use plugin_log_analytics_rs::logs::HostLog;
-use plugin_log_analytics_rs::sizing::Sizing;
+use plugin_log_analytics_tantivy::collectors::TermCounts;
+use plugin_log_analytics_tantivy::config::Dirs;
+use plugin_log_analytics_tantivy::engine::{Engine, Scope};
+use plugin_log_analytics_tantivy::logs::HostLog;
+use plugin_log_analytics_tantivy::sizing::Sizing;
 use tantivy::query::AllQuery;
 
 /// A test bed: a log folder and an engine with its index beside it.
@@ -111,8 +111,8 @@ use std::convert::Infallible;
 
 use hyper_util::rt::TokioIo;
 use nginxui_plugin_sdk::http::hyper::service::service_fn;
-use plugin_log_analytics_rs::api;
-use plugin_log_analytics_rs::app::App;
+use plugin_log_analytics_tantivy::api;
+use plugin_log_analytics_tantivy::app::App;
 
 /// Serves the API of an app on a local port and returns its address.
 pub async fn serve(app: Arc<App>) -> String {
@@ -224,6 +224,6 @@ impl Api {
 /// A client for the local test server. The download client only speaks https,
 /// building it first installs the TLS provider this one needs as well.
 fn plain_client() -> reqwest::Client {
-    let _ = plugin_log_analytics_rs::geolite_download::client();
+    let _ = plugin_log_analytics_tantivy::geolite_download::client();
     reqwest::Client::new()
 }

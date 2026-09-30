@@ -7,11 +7,11 @@ mod common;
 use std::sync::Once;
 
 use common::*;
-use plugin_log_analytics_rs::analytics;
-use plugin_log_analytics_rs::engine::Scope;
-use plugin_log_analytics_rs::query::{self, Filter};
-use plugin_log_analytics_rs::rollup::{RollupCollector, Slot};
-use plugin_log_analytics_rs::sizing::Sizing;
+use plugin_log_analytics_tantivy::analytics;
+use plugin_log_analytics_tantivy::engine::Scope;
+use plugin_log_analytics_tantivy::query::{self, Filter};
+use plugin_log_analytics_tantivy::rollup::{RollupCollector, Slot};
+use plugin_log_analytics_tantivy::sizing::Sizing;
 
 /// A time zone with a half hour offset puts day boundaries inside an hour. A
 /// zone set from outside wins, so other offsets can be tried with `TZ=...`.

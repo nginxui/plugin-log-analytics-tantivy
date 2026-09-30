@@ -13,13 +13,13 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use plugin_log_analytics_rs::analytics;
-use plugin_log_analytics_rs::config::Dirs;
-use plugin_log_analytics_rs::engine::{Engine, Scope};
-use plugin_log_analytics_rs::logs::HostLog;
-use plugin_log_analytics_rs::query::Filter;
-use plugin_log_analytics_rs::search::{self, SearchParams};
-use plugin_log_analytics_rs::sys;
+use plugin_log_analytics_tantivy::analytics;
+use plugin_log_analytics_tantivy::config::Dirs;
+use plugin_log_analytics_tantivy::engine::{Engine, Scope};
+use plugin_log_analytics_tantivy::logs::HostLog;
+use plugin_log_analytics_tantivy::query::Filter;
+use plugin_log_analytics_tantivy::search::{self, SearchParams};
+use plugin_log_analytics_tantivy::sys;
 
 fn dataset() -> Option<PathBuf> {
     let dir = PathBuf::from(
@@ -125,7 +125,7 @@ async fn dashboard_and_search_match_the_validated_figures() {
     let t = Instant::now();
     engine.dashboard(&group, w7_start, w7_end).unwrap();
     eprintln!("dashboard 7 days rollup after restart, warm: {:.0} ms", ms(t));
-    if let Some(plugin_log_analytics_rs::rollup::Slot::Ready(r)) = engine.rollups.get(&group) {
+    if let Some(plugin_log_analytics_tantivy::rollup::Slot::Ready(r)) = engine.rollups.get(&group) {
         eprintln!("rollup: {} hours, about {} MB", r.hours.len(), r.bytes_used() >> 20);
     }
     assert_eq!(day(day_start(first)).len(), 10);

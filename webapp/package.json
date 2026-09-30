@@ -1,5 +1,5 @@
 {
-  "name": "plugin-log-analytics-rs-webapp",
+  "name": "plugin-log-analytics-tantivy-webapp",
   "type": "module",
   "version": "1.0.0",
   "private": true,

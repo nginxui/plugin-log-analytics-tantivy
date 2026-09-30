@@ -193,14 +193,18 @@ async fn a_stopped_import_resumes_without_duplicates() {
     // Large enough that the import is still running when it is stopped
     const TOTAL: usize = 60_000;
     let mut bed = Bed::new();
-    bed.engine.override_sizing(plugin_log_analytics_rs::sizing::Sizing { commit_every: 100, batch_lines: 10, ..SMALL });
+    bed.engine.override_sizing(plugin_log_analytics_tantivy::sizing::Sizing {
+        commit_every: 100,
+        batch_lines: 10,
+        ..SMALL
+    });
     let log = bed.log("access.log");
     write(&log, &lines(0, TOTAL));
 
     let engine = bed.engine.clone();
     let runner = tokio::spawn({
         let engine = engine.clone();
-        async move { engine.run_round(plugin_log_analytics_rs::engine::Scope::All, false).await }
+        async move { engine.run_round(plugin_log_analytics_tantivy::engine::Scope::All, false).await }
     });
     // Stop after the import made some progress
     for _ in 0..500 {
@@ -227,11 +231,11 @@ async fn rebuild_reads_everything_again() {
     write(&log, &lines(0, 100));
     bed.round().await;
     append(&log, &lines(100, 120));
-    bed.engine.run_round(plugin_log_analytics_rs::engine::Scope::All, true).await;
+    bed.engine.run_round(plugin_log_analytics_tantivy::engine::Scope::All, true).await;
     assert_eq!(bed.docs(), 120);
     bed.assert_no_duplicates();
 
-    bed.engine.run_round(plugin_log_analytics_rs::engine::Scope::Group(bed.group()), true).await;
+    bed.engine.run_round(plugin_log_analytics_tantivy::engine::Scope::Group(bed.group()), true).await;
     assert_eq!(bed.docs(), 120);
     bed.assert_no_duplicates();
 }

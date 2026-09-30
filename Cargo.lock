@@ -1220,7 +1220,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
-name = "plugin-log-analytics-rs"
+name = "plugin-log-analytics-tantivy"
 version = "0.1.0-beta.1"
 dependencies = [
  "base64",

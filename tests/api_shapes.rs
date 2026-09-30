@@ -176,7 +176,7 @@ async fn maps_preflight_and_geolite_follow_the_types() {
     assert!(stats.len() <= 2 && stats[0]["Country"].is_string() && stats[0]["Requests"].is_number());
 
     let (code, body) = api
-        .get(&format!("/preflight?log_path={}", plugin_log_analytics_rs::logs::encode_path_param(&api.group())))
+        .get(&format!("/preflight?log_path={}", plugin_log_analytics_tantivy::logs::encode_path_param(&api.group())))
         .await;
     assert_eq!(code, 200);
     check(&types, "PreflightResponse", &body, "preflight");

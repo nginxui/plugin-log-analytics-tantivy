@@ -19,7 +19,7 @@
 # Set CARGO_NET_OFFLINE=true to build from the local crate cache.
 #
 # With --prebuilt DIR nothing is compiled. DIR holds one executable per
-# platform named as in the package, log-analytics-rs-<os>-<arch> with .exe on
+# platform named as in the package, log-analytics-tantivy-<os>-<arch> with .exe on
 # Windows, and every platform must have one (--host-only narrows that to the
 # platform of this machine). The release workflow builds the executables on
 # native runners and packages them this way.
@@ -40,8 +40,8 @@ DIST="${ROOT}/dist"
 STAGE="${DIST}/stage"
 TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
 
-PLUGIN_ID="com.nginxui.log-analytics-rs"
-BIN="log-analytics-rs"
+PLUGIN_ID="com.nginxui.log-analytics-tantivy"
+BIN="log-analytics-tantivy"
 
 # platform key | rust target | build tool
 PLATFORMS=(

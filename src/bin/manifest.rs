@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use plugin_log_analytics_rs::manifest;
+use plugin_log_analytics_tantivy::manifest;
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

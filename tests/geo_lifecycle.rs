@@ -2,7 +2,7 @@
 //! with the geo that used it. This test has a process of its own, so no other
 //! test holds the database while it looks.
 
-use plugin_log_analytics_rs::geo::{country_database_loaded, Geo};
+use plugin_log_analytics_tantivy::geo::{country_database_loaded, Geo};
 
 #[test]
 fn the_country_database_is_read_on_first_use_and_freed_with_its_geo() {

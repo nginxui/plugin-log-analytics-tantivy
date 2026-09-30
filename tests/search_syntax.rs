@@ -3,7 +3,7 @@
 mod common;
 
 use common::*;
-use plugin_log_analytics_rs::engine::Scope;
+use plugin_log_analytics_tantivy::engine::Scope;
 use serde_json::{json, Value};
 
 const LINES: usize = 600;
