@@ -1,7 +1,6 @@
 //! The figures of the performance dataset. They were validated against the Go
 //! plugin: 30 day dashboard PV 1,400,000 and UV 59,983, the last 7 days 326,923
-//! and 54,091, and 1,399,999 hits for the search over the 30 days (the search
-//! range excludes its last second).
+//! and 54,091, and 1,400,000 hits for the search over the 30 days.
 //!
 //! The dataset is large, so the test only runs on request:
 //!
@@ -132,7 +131,7 @@ async fn dashboard_and_search_match_the_validated_figures() {
 
     let t = Instant::now();
     let params = SearchParams {
-        filter: Filter { groups: vec![group.clone()], start: Some(first), end: Some(last), ..Default::default() },
+        filter: Filter { groups: vec![group.clone()], start: Some(first), end: Some(last + 1), ..Default::default() },
         limit: 50,
         sort_by: "timestamp".into(),
         descending: true,
@@ -140,7 +139,7 @@ async fn dashboard_and_search_match_the_validated_figures() {
     };
     let out = search::search(&searcher, fields, &params).unwrap();
     eprintln!("search 30 days: {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
-    assert_eq!(out.summary.docs, 1_399_999);
+    assert_eq!(out.summary.docs, 1_400_000);
     assert_eq!(out.hits.len(), 50);
 
     // Loading the stored lines of many hits reads the doc store
