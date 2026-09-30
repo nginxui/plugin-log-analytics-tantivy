@@ -197,25 +197,6 @@ impl Engine {
         self.last_report.lock().expect("report lock").clone()
     }
 
-    /// Makes the index follow the phrase search setting. A change empties the
-    /// index, the round that follows reads every log again.
-    fn apply_layout(&self) {
-        let wanted = self.settings().phrase_search;
-        if self.store.positions() == wanted {
-            return;
-        }
-        match self.store.set_positions(wanted) {
-            Ok(true) => {
-                *self.state.lock().expect("state lock") = IndexState::default();
-                self.rollups.clear();
-                self.generation.fetch_add(1, Ordering::SeqCst);
-                nginxui_plugin_sdk::info!("the phrase search setting changed, the logs are indexed again");
-            }
-            Ok(false) => {}
-            Err(e) => nginxui_plugin_sdk::warn!("cannot change the index layout: {e}"),
-        }
-    }
-
     /// Whether a round is running.
     pub fn round_running(&self) -> bool {
         self.round_active.load(Ordering::SeqCst)
@@ -355,7 +336,6 @@ impl Engine {
         if self.cancelled() {
             return None;
         }
-        self.apply_layout();
         let state = self.state();
         let groups = self.groups_in(&scope);
 

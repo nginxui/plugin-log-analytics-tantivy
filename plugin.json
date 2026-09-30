@@ -85,13 +85,6 @@
         "default": 0
       },
       {
-        "key": "phrase_search",
-        "type": "bool",
-        "display_name": "Match quoted phrases in order",
-        "help_text": "Lets a quoted text in the search box match only when its words appear in that order. This makes the index larger and indexing slower, and changing it reads all logs again. Without it a quoted text matches lines that contain all of its words.",
-        "default": false
-      },
-      {
         "key": "index_custom_mmdb",
         "type": "text",
         "display_name": "Custom IP location database",

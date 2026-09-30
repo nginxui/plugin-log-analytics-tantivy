@@ -1,7 +1,6 @@
 //! The tantivy index on disk and the reader over it.
 
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
 
 use tantivy::indexer::LogMergePolicy;
 use tantivy::store::{Compressor, ZstdCompressor};
@@ -39,18 +38,11 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
 }
 
-/// The index and reader that a layout change replaces as a whole.
-struct Inner {
-    index: Index,
-    reader: IndexReader,
-    /// Whether the raw line has positions, which quoted phrases need.
-    positions: bool,
-}
-
 /// An open index with its reader.
 pub struct Store {
     dir: PathBuf,
-    inner: RwLock<Inner>,
+    index: Index,
+    reader: IndexReader,
     fields: Fields,
 }
 
@@ -61,44 +53,35 @@ fn schema_text(schema: &tantivy::schema::Schema) -> Option<String> {
 impl Store {
     /// Opens the index in `dir`, or creates it. An index that cannot be opened,
     /// that has another schema or another format is replaced by an empty one,
-    /// its files are read again from the logs. Both layouts of the raw line are
-    /// accepted, a new index gets the one without positions.
+    /// its files are read again from the logs.
     pub fn open(dir: &Path) -> Result<(Store, IndexState), StoreError> {
         std::fs::create_dir_all(dir)?;
-        let (schema, fields) = schema::build(false);
+        let (schema, fields) = schema::build();
 
         if dir.join("meta.json").exists() {
             if let Ok(index) = Index::open_in_dir(dir) {
                 tokenizer::register(&index);
-                let found = schema_text(&index.schema());
-                let positions = if found == schema_text(&schema::build(true).0) {
-                    Some(true)
-                } else if found == schema_text(&schema) {
-                    Some(false)
-                } else {
-                    None
-                };
+                let same_schema = schema_text(&index.schema()) == schema_text(&schema);
                 let same_settings = index.settings().docstore_compression == index_settings().docstore_compression;
                 let state = index.load_metas().ok().and_then(|m| IndexState::from_payload(m.payload.as_deref()));
-                if let (Some(positions), true, Some(state)) = (positions, same_settings, state) {
+                if let (true, true, Some(state)) = (same_schema, same_settings, state) {
                     let reader = Self::make_reader(&index)?;
-                    let inner = RwLock::new(Inner { index, reader, positions });
-                    return Ok((Store { dir: dir.to_path_buf(), inner, fields }, state));
+                    return Ok((Store { dir: dir.to_path_buf(), index, reader, fields }, state));
                 }
             }
             Self::clear(dir)?;
         }
 
-        let inner = RwLock::new(Self::create(dir, false)?);
-        Ok((Store { dir: dir.to_path_buf(), inner, fields }, IndexState::default()))
+        let (index, reader) = Self::create(dir)?;
+        Ok((Store { dir: dir.to_path_buf(), index, reader, fields }, IndexState::default()))
     }
 
-    fn create(dir: &Path, positions: bool) -> Result<Inner, StoreError> {
-        let (schema, _) = schema::build(positions);
+    fn create(dir: &Path) -> Result<(Index, IndexReader), StoreError> {
+        let (schema, _) = schema::build();
         let index = Index::builder().schema(schema).settings(index_settings()).create_in_dir(dir)?;
         tokenizer::register(&index);
         let reader = Self::make_reader(&index)?;
-        Ok(Inner { index, reader, positions })
+        Ok((index, reader))
     }
 
     fn make_reader(index: &Index) -> tantivy::Result<IndexReader> {
@@ -117,24 +100,6 @@ impl Store {
         Ok(())
     }
 
-    /// Whether the raw line has positions.
-    pub fn positions(&self) -> bool {
-        self.inner.read().expect("store lock").positions
-    }
-
-    /// Switches the layout of the raw line. The index is emptied and created
-    /// again, so the caller reads the logs from their start. Returns whether
-    /// anything changed. No writer may be open.
-    pub fn set_positions(&self, positions: bool) -> Result<bool, StoreError> {
-        let mut inner = self.inner.write().expect("store lock");
-        if inner.positions == positions {
-            return Ok(false);
-        }
-        Self::clear(&self.dir)?;
-        *inner = Self::create(&self.dir, positions)?;
-        Ok(true)
-    }
-
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -145,25 +110,20 @@ impl Store {
 
     /// A snapshot of the committed documents.
     pub fn searcher(&self) -> Searcher {
-        self.inner.read().expect("store lock").reader.searcher()
+        self.reader.searcher()
     }
 
     /// Makes the last commit visible to new searchers. It runs after every
     /// commit, the reader never reloads by itself.
     pub fn reload(&self) {
-        if let Err(e) = self.inner.read().expect("store lock").reader.reload() {
+        if let Err(e) = self.reader.reload() {
             nginxui_plugin_sdk::warn!("could not reload the index reader: {e}");
         }
     }
 
     /// A writer with the merge policy of the log index.
     pub fn writer(&self, sizing: &Sizing) -> Result<IndexWriter<TantivyDocument>, StoreError> {
-        let writer = self
-            .inner
-            .read()
-            .expect("store lock")
-            .index
-            .writer_with_num_threads::<TantivyDocument>(sizing.threads, sizing.heap_mb << 20)?;
+        let writer = self.index.writer_with_num_threads::<TantivyDocument>(sizing.threads, sizing.heap_mb << 20)?;
         let mut policy = LogMergePolicy::default();
         policy.set_min_num_segments(MERGE_MIN_SEGMENTS);
         policy.set_max_docs_before_merge(MERGE_MAX_DOCS);

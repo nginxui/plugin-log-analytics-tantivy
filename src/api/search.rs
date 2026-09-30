@@ -112,8 +112,7 @@ pub async fn search(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiE
             "" => ("timestamp".to_owned(), true),
             other => (other.to_owned(), request.sort_order != "asc"),
         };
-        let mut filter = filter_of(&request, &group, now());
-        filter.raw_phrases = app.engine.store.positions();
+        let filter = filter_of(&request, &group, now());
         let params = SearchParams {
             filter,
             // A negative limit asks for the figures without hits

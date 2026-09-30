@@ -3,7 +3,6 @@
 mod common;
 
 use common::*;
-use plugin_log_analytics_tantivy::engine::Scope;
 use serde_json::{json, Value};
 
 const LINES: usize = 600;
@@ -92,25 +91,10 @@ async fn unknown_fields_and_bad_values_are_text_with_hints() {
 }
 
 #[tokio::test]
-async fn quoted_phrases_follow_the_phrase_setting() {
+async fn quoted_text_matches_its_words_in_order() {
     let api = Api::new(200).await;
     let wp = (0..200).filter(|n| (n / 2) % 5 == 2).count() as u64;
-    // Off: a quoted text needs all its words in any order
-    assert_eq!(total(&api, "\"php wp\"").await, wp);
     assert_eq!(total(&api, "\"wp login php\"").await, wp);
-
-    let settings = |on: bool| json!({"phrase_search": on}).as_object().cloned().unwrap();
-    api.app.configure(&settings(true));
-    api.app.engine.run_round(Scope::All, false).await;
-    assert!(api.app.engine.store.positions());
-    assert_eq!(api.app.engine.group_stats(&api.group()).docs, 200);
     assert_eq!(total(&api, "\"php wp\"").await, 0);
-    assert_eq!(total(&api, "\"wp login php\"").await, wp);
     assert_eq!(total(&api, "-\"wp login php\"").await, 200 - wp);
-
-    api.app.configure(&settings(false));
-    api.app.engine.run_round(Scope::All, false).await;
-    assert!(!api.app.engine.store.positions());
-    assert_eq!(api.app.engine.group_stats(&api.group()).docs, 200);
-    assert_eq!(total(&api, "\"php wp\"").await, wp);
 }

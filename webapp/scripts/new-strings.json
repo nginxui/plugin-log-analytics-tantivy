@@ -154,11 +154,6 @@
     "zh_TW": "排除符合的行",
     "ja_JP": "一致する行を除外します"
   },
-  "Words that belong together": {
-    "zh_CN": "一起出现的词",
-    "zh_TW": "一起出現的詞",
-    "ja_JP": "まとまりのある単語"
-  },
   "Directory with the map outline files of China. Leave empty to use the plugin's own folder. Files not found there are loaded online.": {
     "zh_CN": "中国地图轮廓文件所在目录。留空则使用插件自己的目录，目录中没有的文件会在线加载。",
     "zh_TW": "中國地圖輪廓檔案所在目錄。留空則使用外掛自己的目錄，目錄中沒有的檔案會從線上載入。",
@@ -193,5 +188,10 @@
     "zh_CN": "部分搜索条件未按所写方式生效",
     "zh_TW": "部分搜尋條件未按所寫方式生效",
     "ja_JP": "検索条件の一部は記述どおりに適用されませんでした"
+  },
+  "Words that appear together in this order": {
+    "zh_CN": "按此顺序相邻出现的词",
+    "zh_TW": "按此順序相鄰出現的詞",
+    "ja_JP": "この順序で連続して現れる語"
   }
 }

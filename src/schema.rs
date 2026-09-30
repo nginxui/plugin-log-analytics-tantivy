@@ -81,17 +81,18 @@ fn phrase(fast: bool) -> TextOptions {
     }
 }
 
-/// The stored line, tokenized for the search box. Positions make quoted
-/// phrases possible and cost index size and time, so they are optional.
-fn raw_text(positions: bool) -> TextOptions {
-    let record = if positions { IndexRecordOption::WithFreqsAndPositions } else { IndexRecordOption::Basic };
-    TextOptions::default()
-        .set_stored()
-        .set_indexing_options(TextFieldIndexing::default().set_tokenizer(tokenizer::TEXT_NAME).set_index_option(record))
+/// The stored line, tokenized for the search box. Positions let a quoted text
+/// match its words in order, at about a fifth more index size.
+fn raw_text() -> TextOptions {
+    TextOptions::default().set_stored().set_indexing_options(
+        TextFieldIndexing::default()
+            .set_tokenizer(tokenizer::TEXT_NAME)
+            .set_index_option(IndexRecordOption::WithFreqsAndPositions),
+    )
 }
 
-/// Builds the schema. `positions` indexes the positions of the raw line.
-pub fn build(positions: bool) -> (Schema, Fields) {
+/// Builds the schema.
+pub fn build() -> (Schema, Fields) {
     let mut b = Schema::builder();
     let fields = Fields {
         ts: b.add_i64_field("ts", INDEXED | FAST),
@@ -115,7 +116,7 @@ pub fn build(positions: bool) -> (Schema, Fields) {
         bytes_sent: b.add_u64_field("bytes_sent", NumericOptions::default().set_fast()),
         request_time: b.add_f64_field("request_time", NumericOptions::default().set_fast()),
         upstream_time: b.add_f64_field("upstream_time", NumericOptions::default().set_fast()),
-        raw: b.add_text_field("raw", raw_text(positions)),
+        raw: b.add_text_field("raw", raw_text()),
         main_log_path: b.add_text_field("main_log_path", keyword()),
         fp: b.add_text_field("fp", keyword()),
         off: b.add_u64_field("off", NumericOptions::default().set_fast()),

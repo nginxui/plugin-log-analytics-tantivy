@@ -11,7 +11,6 @@ pub const KEY_INTERVAL: &str = "incremental_index_interval";
 pub const KEY_MAX_TASKS: &str = "max_concurrent_index_tasks";
 pub const KEY_CUSTOM_MMDB: &str = "index_custom_mmdb";
 pub const KEY_MAP_PATH: &str = "geo_map_path";
-pub const KEY_PHRASE_SEARCH: &str = "phrase_search";
 
 /// Minutes between two indexing rounds when the setting is empty.
 pub const DEFAULT_INTERVAL_MINUTES: i64 = 15;
@@ -27,8 +26,6 @@ pub struct Settings {
     pub custom_mmdb: String,
     /// Folder with the map outline files, relative to the data directory when not absolute.
     pub map_path: String,
-    /// Index the positions of the raw line, so quoted phrases match in order.
-    pub phrase_search: bool,
 }
 
 fn int_of(v: Option<&Value>) -> i64 {
@@ -36,15 +33,6 @@ fn int_of(v: Option<&Value>) -> i64 {
         Some(Value::Number(n)) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)).unwrap_or(0),
         Some(Value::String(s)) => s.trim().parse().unwrap_or(0),
         _ => 0,
-    }
-}
-
-fn bool_of(v: Option<&Value>) -> bool {
-    match v {
-        Some(Value::Bool(b)) => *b,
-        Some(Value::String(s)) => matches!(s.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes" | "on"),
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
-        _ => false,
     }
 }
 
@@ -61,7 +49,6 @@ impl Settings {
             max_tasks: int_of(raw.get(KEY_MAX_TASKS)),
             custom_mmdb: text_of(raw.get(KEY_CUSTOM_MMDB)),
             map_path: text_of(raw.get(KEY_MAP_PATH)),
-            phrase_search: bool_of(raw.get(KEY_PHRASE_SEARCH)),
         }
     }
 
@@ -126,12 +113,8 @@ mod tests {
     fn settings_accept_numbers_and_strings() {
         let s = Settings::parse(&raw(json!({
             "incremental_index_interval": "30", "max_concurrent_index_tasks": 3.0,
-            "index_custom_mmdb": " my.mmdb ", "geo_map_path": "", "unknown": 1, "phrase_search": "true"
+            "index_custom_mmdb": " my.mmdb ", "geo_map_path": "", "unknown": 1
         })));
-        assert!(s.phrase_search);
-        assert!(!Settings::parse(&raw(json!({}))).phrase_search);
-        assert!(Settings::parse(&raw(json!({"phrase_search": true}))).phrase_search);
-        assert!(!Settings::parse(&raw(json!({"phrase_search": false}))).phrase_search);
         assert_eq!(s.interval_minutes, 30);
         assert_eq!(s.max_tasks, 3);
         assert_eq!(s.custom_mmdb, "my.mmdb");

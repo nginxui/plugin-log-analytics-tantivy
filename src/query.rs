@@ -39,9 +39,6 @@ pub struct Filter {
     pub browsers: Vec<String>,
     pub systems: Vec<String>,
     pub devices: Vec<String>,
-    /// The raw line has positions, so a quoted text is a phrase. Otherwise it
-    /// matches as its words.
-    pub raw_phrases: bool,
 }
 
 fn term(field: Field, text: &str) -> Box<dyn Query> {
@@ -125,11 +122,10 @@ fn range_of<T: Copy>(span: &Span<T>, make: impl Fn(T) -> Term) -> Box<dyn Query>
 }
 
 /// The query of one part of the search box.
-fn kind_query(f: &Fields, kind: &Kind, raw_phrases: bool) -> Box<dyn Query> {
+fn kind_query(f: &Fields, kind: &Kind) -> Box<dyn Query> {
     match kind {
         Kind::Text(text) => text_query(f.raw, text),
-        Kind::Phrase(text) if raw_phrases => raw_phrase(f.raw, text),
-        Kind::Phrase(text) => text_query(f.raw, text),
+        Kind::Phrase(text) => raw_phrase(f.raw, text),
         Kind::Status(span) => match (span.lo, span.hi) {
             (Bound::Included(a), Bound::Included(b)) if a == b => {
                 Box::new(TermQuery::new(Term::from_field_u64(f.status, a), IndexRecordOption::Basic))
@@ -173,7 +169,7 @@ pub fn build(f: &Fields, filter: &Filter) -> Box<dyn Query> {
     let mut clauses: Vec<Box<dyn Query>> = Vec::new();
     let mut excluded: Vec<Box<dyn Query>> = Vec::new();
     for item in qsyntax::parse(&filter.text).items {
-        let q = kind_query(f, &item.kind, filter.raw_phrases);
+        let q = kind_query(f, &item.kind);
         if item.exclude {
             excluded.push(q);
         } else {
@@ -313,8 +309,8 @@ mod tests {
     ];
 
     /// A small index with a few documents, to count what a filter matches.
-    fn index_with(positions: bool) -> (tantivy::Index, Fields) {
-        let (schema, f) = schema::build(positions);
+    fn index() -> (tantivy::Index, Fields) {
+        let (schema, f) = schema::build();
         let index = tantivy::Index::create_in_ram(schema);
         crate::tokenizer::register(&index);
         let mut w = index.writer_with_num_threads::<tantivy::TantivyDocument>(1, 15_000_000).unwrap();
@@ -348,10 +344,6 @@ mod tests {
         }
         w.commit().unwrap();
         (index, f)
-    }
-
-    fn index() -> (tantivy::Index, Fields) {
-        index_with(true)
     }
 
     fn count(index: &tantivy::Index, f: &Fields, filter: &Filter) -> usize {
@@ -425,7 +417,7 @@ mod tests {
         use tantivy::collector::DocSetCollector;
         use tantivy::columnar::Column;
         let searcher = index.reader().unwrap().searcher();
-        let filter = Filter { text: text.into(), raw_phrases: true, ..Default::default() };
+        let filter = Filter { text: text.into(), ..Default::default() };
         let docs = searcher.search(build(f, &filter).as_ref(), &DocSetCollector).unwrap();
         let mut out: Vec<i64> = docs
             .into_iter()
@@ -523,17 +515,13 @@ mod tests {
     }
 
     #[test]
-    fn a_quoted_text_without_positions_matches_as_its_words() {
-        let (index, f) = index_with(false);
-        let count_of = |text: &str, phrases: bool| {
-            let filter = Filter { text: text.into(), raw_phrases: phrases, ..Default::default() };
-            count(&index, &f, &filter)
-        };
-        // The words are all there, in another order
-        assert_eq!(count_of("\"select union\"", false), 1);
-        assert_eq!(count_of("\"union select\"", false), 1);
-        assert_eq!(count_of("\"union nothing\"", false), 0);
-        assert_eq!(count_of("-\"union select\"", false), 4);
+    fn a_quoted_text_matches_its_words_in_order() {
+        let (index, f) = index();
+        let count_of = |text: &str| count(&index, &f, &Filter { text: text.into(), ..Default::default() });
+        assert_eq!(count_of("\"union select\""), 1);
+        assert_eq!(count_of("\"select union\""), 0);
+        assert_eq!(count_of("\"union nothing\""), 0);
+        assert_eq!(count_of("-\"union select\""), 4);
     }
 
     #[test]

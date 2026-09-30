@@ -220,6 +220,6 @@
   "Visits": "访问量",
   "Words of the request path, in order": "请求路径中的词，按顺序匹配",
   "Words of the user agent or of the referer, in order": "User-Agent 或来源页中的词，按顺序匹配",
-  "Words that belong together": "一起出现的词",
+  "Words that appear together in this order": "按此顺序相邻出现的词",
   "Yes": "是的"
 }

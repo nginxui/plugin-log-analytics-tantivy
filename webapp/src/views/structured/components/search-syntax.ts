@@ -19,7 +19,7 @@ export function syntaxRows(): SyntaxRow[] {
     { examples: ['country:CN', 'region:Bavaria', 'city:Berlin'], meaning: $gettext('Country code, province or city of the client') },
     { examples: ['bytes:>1000', 'rt:>0.5', 'rt:0.1..0.5'], meaning: $gettext('Bytes sent or request time in seconds, with a comparison or a range') },
     { examples: ['-bot', '-status:404'], meaning: $gettext('Leaves out the lines that match') },
-    { examples: ['"union select"'], meaning: $gettext('Words that belong together') },
+    { examples: ['"union select"'], meaning: $gettext('Words that appear together in this order') },
   ]
 }
 

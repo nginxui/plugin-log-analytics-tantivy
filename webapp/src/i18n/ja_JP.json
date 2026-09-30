@@ -220,6 +220,6 @@
   "Visits": "訪問数",
   "Words of the request path, in order": "リクエストパスの単語（順序どおり）",
   "Words of the user agent or of the referer, in order": "User-Agent またはリファラーの単語（順序どおり）",
-  "Words that belong together": "まとまりのある単語",
+  "Words that appear together in this order": "この順序で連続して現れる語",
   "Yes": "はい"
 }
