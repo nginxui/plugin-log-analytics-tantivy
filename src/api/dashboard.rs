@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{Datelike, NaiveDate};
 use nginxui_plugin_sdk::http::{Incoming, Request, StatusCode};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -45,19 +45,24 @@ fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
 
+/// The first instant of a calendar day in the local zone of the server.
+fn local_midnight(date: NaiveDate) -> i64 {
+    crate::localtime::from_local(date.year(), date.month(), date.day(), 0, 0, 0).unwrap_or(0)
+}
+
 /// The window `[start, end)` of a dashboard request in unix seconds. The dates
-/// are UTC days and the end date is included, so the window ends at the next
+/// are days in the local zone of the server, like the daily and hourly buckets,
+/// and the end date is included, so the window ends at the next local
 /// midnight. A missing date means the last 30 days.
 fn window(request: &DashboardRequest, now: i64) -> Result<(i64, i64), ApiError> {
-    let parse = |text: &str, field: &str| -> Result<Option<i64>, ApiError> {
+    let parse = |text: &str, field: &str| -> Result<Option<NaiveDate>, ApiError> {
         if text.is_empty() {
             return Ok(None);
         }
-        let date = NaiveDate::parse_from_str(text, "%Y-%m-%d").map_err(|e| bad_date(field, e))?;
-        Ok(Some(Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).expect("midnight")).timestamp()))
+        NaiveDate::parse_from_str(text, "%Y-%m-%d").map(Some).map_err(|e| bad_date(field, e))
     };
-    let start = parse(&request.start_date, "start_date")?;
-    let end = parse(&request.end_date, "end_date")?.map(|t| t + 86400);
+    let start = parse(&request.start_date, "start_date")?.map(local_midnight);
+    let end = parse(&request.end_date, "end_date")?.and_then(|d| d.succ_opt()).map(local_midnight);
     Ok(match (start, end) {
         (Some(s), Some(e)) => (s, e),
         _ => (now - 30 * 86400, now),
@@ -186,11 +191,12 @@ mod tests {
     }
 
     #[test]
-    fn dates_are_utc_days_and_the_end_day_is_included() {
+    fn dates_are_local_days_and_the_end_day_is_included() {
         let (s, e) = window(&request("2026-09-01", "2026-09-30"), 0).unwrap();
-        assert_eq!(s, 1_788_220_800);
-        assert_eq!(e, 1_790_812_800);
-        assert_eq!(e - s, 30 * 86400);
+        assert_eq!(s, crate::localtime::from_local(2026, 9, 1, 0, 0, 0).unwrap());
+        assert_eq!(e, crate::localtime::from_local(2026, 10, 1, 0, 0, 0).unwrap());
+        assert_eq!(crate::localtime::format_date(s), "2026-09-01");
+        assert_eq!(crate::localtime::format_date(e - 1), "2026-09-30");
     }
 
     #[test]
