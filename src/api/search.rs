@@ -202,6 +202,8 @@ pub struct AnalyticsRequest {
     pub start_time: i64,
     pub end_time: i64,
     pub limit: i64,
+    /// ISO code of a country, for the region and hotspot maps.
+    pub country: String,
 }
 
 pub async fn analytics(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {

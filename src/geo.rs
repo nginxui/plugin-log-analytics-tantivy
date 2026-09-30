@@ -19,6 +19,13 @@ pub struct GeoLocation {
     pub region_code: String,
     pub province: String,
     pub city: String,
+    /// ISO 3166-2 codes of the first two subdivision levels, like `US-CA` or
+    /// `FR-IDF` and `FR-75`. Empty when the database has none.
+    pub sub1: String,
+    pub sub2: String,
+    /// The city as `country|name|latitude|longitude` for the hotspot map, the
+    /// coordinates rounded to two decimals. Empty without coordinates.
+    pub city_point: String,
     pub c1: String,
     pub c2: String,
     pub c3: String,
@@ -39,6 +46,14 @@ struct Place {
     names: Names,
     name: Option<String>,
     name_zh: Option<String>,
+    iso_code: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Coordinates {
+    latitude: Option<f64>,
+    longitude: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -54,6 +69,7 @@ struct CityRecord {
     subdivisions: Vec<Place>,
     province: Place,
     city: Place,
+    location: Coordinates,
     c1: Option<String>,
     c2: Option<String>,
     c3: Option<String>,
@@ -179,6 +195,18 @@ impl Geo {
         let city_en = first_non_empty([record.city.name.as_deref(), record.city.names.en.as_deref()]);
         let city_zh = first_non_empty([record.city.name_zh.as_deref(), record.city.names.zh_cn.as_deref()]);
 
+        let country = if iso.is_empty() { loc.region_code.clone() } else { iso.clone() };
+        let code_of = |place: Option<&Place>| {
+            place
+                .and_then(|p| p.iso_code.as_deref())
+                .map(str::trim)
+                .filter(|c| !c.is_empty() && !country.is_empty())
+                .map(|c| format!("{country}-{c}"))
+                .unwrap_or_default()
+        };
+        loc.sub1 = code_of(record.subdivisions.first());
+        loc.sub2 = code_of(record.subdivisions.get(1));
+
         loc.province = province_en;
         loc.city = city_en;
         if is_chinese_region(&loc.region_code) || is_chinese_region(&iso) {
@@ -192,8 +220,28 @@ impl Geo {
             }
             loc.region_code = "CN".to_owned();
         }
+        if let (Some(lat), Some(lon)) = (record.location.latitude, record.location.longitude) {
+            if !loc.city.is_empty() && lat.is_finite() && lon.is_finite() {
+                loc.city_point = city_point(&loc.region_code, &loc.city, lat, lon);
+            }
+        }
         Some(loc)
     }
+}
+
+/// The hotspot key of a city: `country|name|latitude|longitude`. A `|` in the
+/// name would split the key, so it is replaced.
+pub fn city_point(country: &str, city: &str, lat: f64, lon: f64) -> String {
+    format!("{country}|{}|{lat:.2}|{lon:.2}", city.replace('|', "/"))
+}
+
+/// A hotspot key split into its parts, `None` for text in another form.
+pub fn parse_city_point(key: &str) -> Option<(&str, &str, f64, f64)> {
+    let mut parts = key.rsplitn(3, '|');
+    let lon = parts.next()?.parse().ok()?;
+    let lat = parts.next()?.parse().ok()?;
+    let (country, city) = parts.next()?.split_once('|')?;
+    Some((country, city, lat, lon))
 }
 
 /// Cache of the locations one thread looked up. Logs repeat their clients.
@@ -301,5 +349,13 @@ mod tests {
         let abs = GeoPaths::new(dir.path().to_path_buf(), "/elsewhere/a.mmdb");
         std::fs::remove_file(dir.path().join(CITY_DB_NAME)).unwrap();
         assert_eq!(abs.db_path(), Path::new("/elsewhere/a.mmdb"));
+    }
+
+    #[test]
+    fn city_points_round_trip() {
+        let key = city_point("US", "Salt Lake|City", 40.7608, -111.8910);
+        assert_eq!(key, "US|Salt Lake/City|40.76|-111.89");
+        assert_eq!(parse_city_point(&key), Some(("US", "Salt Lake/City", 40.76, -111.89)));
+        assert_eq!(parse_city_point("broken"), None);
     }
 }

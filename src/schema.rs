@@ -9,7 +9,7 @@ use crate::tokenizer;
 /// Version of the on disk format. The index is recreated when it differs, see
 /// [`crate::engine`]. Bump it with every change of the schema, the analyzers
 /// or what a document means.
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// Handles to every field of the log index.
 #[derive(Clone, Debug)]
@@ -45,6 +45,11 @@ pub struct Fields {
     pub fp: Field,
     /// Severity of an error log entry, empty for an access log line.
     pub level: Field,
+    /// ISO 3166-2 codes of the first and second subdivision of the client.
+    pub sub1: Field,
+    pub sub2: Field,
+    /// The city of the client with its coordinates, see [`crate::geo::city_point`].
+    pub city_point: Field,
     /// Byte offset of the line in the decompressed content.
     pub off: Field,
 }
@@ -123,6 +128,9 @@ pub fn build() -> (Schema, Fields) {
         fp: b.add_text_field("fp", keyword()),
         off: b.add_u64_field("off", NumericOptions::default().set_fast()),
         level: b.add_text_field("level", keyword_fast()),
+        sub1: b.add_text_field("sub1", keyword_fast()),
+        sub2: b.add_text_field("sub2", keyword_fast()),
+        city_point: b.add_text_field("city_point", keyword_fast()),
     };
     (b.build(), fields)
 }

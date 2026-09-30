@@ -230,6 +230,9 @@ pub fn build_doc(
             (f.c2, &loc.c2),
             (f.c3, &loc.c3),
             (f.c4, &loc.c4),
+            (f.sub1, &loc.sub1),
+            (f.sub2, &loc.sub2),
+            (f.city_point, &loc.city_point),
         ] {
             if !value.is_empty() {
                 d.add_text(field, value);

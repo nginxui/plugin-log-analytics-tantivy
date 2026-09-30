@@ -116,6 +116,40 @@ pub async fn world(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiEr
     .await
 }
 
+/// Requests per subdivision of a country, keyed by ISO 3166-2 code, for the
+/// region map of a country.
+pub async fn regions(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
+    geo(app, req, |app, request, group, searcher| {
+        let country = request.country.trim().to_ascii_uppercase();
+        if country.len() != 2 || !country.bytes().all(|b| b.is_ascii_uppercase()) {
+            return Err(ApiError::Validate("country must be a two letter ISO code".into()));
+        }
+        let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
+        let shares = analytics::regions(searcher, app.engine.store.fields(), &filter, &country, 500)?;
+        Ok(json!({ "data": items(&shares, "code") }))
+    })
+    .await
+}
+
+/// The busiest cities with their coordinates, of one country or of all, for
+/// the hotspot map.
+pub async fn points(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
+    geo(app, req, |app, request, group, searcher| {
+        let country = request.country.trim().to_ascii_uppercase();
+        let limit = if request.limit > 0 { (request.limit as usize).min(2000) } else { 500 };
+        let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
+        let points = analytics::city_points(
+            searcher,
+            app.engine.store.fields(),
+            &filter,
+            (!country.is_empty()).then_some(country.as_str()),
+            limit,
+        )?;
+        Ok(json!({ "data": points }))
+    })
+    .await
+}
+
 /// Requests per province of China.
 pub async fn china(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
     geo(app, req, |app, request, group, searcher| {

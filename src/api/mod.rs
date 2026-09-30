@@ -44,7 +44,7 @@ async fn route(app: &Arc<App>, req: Request<Incoming>, method: &Method, path: &s
             app.wait_listed(STATUS_WAIT).await;
         }
         "/search" | "/entries" | "/analytics" | "/preflight" | "/dashboard" | "/geo/world" | "/geo/china"
-        | "/geo/china/city" | "/geo/stats" | "/index/rebuild" => {
+        | "/geo/china/city" | "/geo/regions" | "/geo/points" | "/geo/stats" | "/index/rebuild" => {
             app.wait_listed(START_WAIT).await;
         }
         _ => {}
@@ -59,6 +59,8 @@ async fn route(app: &Arc<App>, req: Request<Incoming>, method: &Method, path: &s
         "/geo/world" if post => dashboard::world(app, req).await?,
         "/geo/china" if post => dashboard::china(app, req).await?,
         "/geo/china/city" if post => dashboard::china_city(app, req).await?,
+        "/geo/regions" if post => dashboard::regions(app, req).await?,
+        "/geo/points" if post => dashboard::points(app, req).await?,
         "/geo/stats" if post => dashboard::stats(app, req).await?,
         "/index/rebuild" if post => index::rebuild(app, req).await?,
         "/warm" if post => index::warm(app),

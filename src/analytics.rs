@@ -520,6 +520,70 @@ pub fn provinces(
     Ok(shares_of_counts(&count_terms(searcher, fields, &filter, "province")?, size))
 }
 
+/// Requests per subdivision of a country, keyed by ISO 3166-2 code. Both
+/// levels are counted, since the outlines of a country use one of them. The
+/// shares are of all requests of the country.
+pub fn regions(
+    searcher: &Searcher,
+    fields: &Fields,
+    filter: &Filter,
+    country: &str,
+    size: usize,
+) -> Result<Vec<Share>, AnalyticsError> {
+    let filter = Filter { countries: vec![country.to_owned()], ..filter.clone() };
+    let mut counts = count_terms(searcher, fields, &filter, "sub1")?;
+    for (code, count) in count_terms(searcher, fields, &filter, "sub2")? {
+        *counts.entry(code).or_default() += count;
+    }
+    let total = searcher.search(query::build(fields, &filter).as_ref(), &tantivy::collector::Count)? as u64;
+    Ok(top_terms(&counts, size)
+        .into_iter()
+        .map(|(key, value)| Share { percent: percent(value, total), key, value })
+        .collect())
+}
+
+/// One city of the hotspot map.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct CityPoint {
+    pub country: String,
+    pub city: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub value: u64,
+    pub percent: f64,
+}
+
+/// The busiest cities with their coordinates, of one country or of all. The
+/// shares are of all requests that were placed in a city.
+pub fn city_points(
+    searcher: &Searcher,
+    fields: &Fields,
+    filter: &Filter,
+    country: Option<&str>,
+    size: usize,
+) -> Result<Vec<CityPoint>, AnalyticsError> {
+    let filter = match country {
+        Some(c) => Filter { countries: vec![c.to_owned()], ..filter.clone() },
+        None => filter.clone(),
+    };
+    let counts = count_terms(searcher, fields, &filter, "city_point")?;
+    let total: u64 = counts.values().sum();
+    Ok(top_terms(&counts, size)
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let (country, city, lat, lon) = crate::geo::parse_city_point(&key)?;
+            Some(CityPoint {
+                country: country.to_owned(),
+                city: city.to_owned(),
+                lat,
+                lon,
+                value,
+                percent: percent(value, total),
+            })
+        })
+        .collect())
+}
+
 /// Requests per city of a province.
 pub fn cities(
     searcher: &Searcher,
@@ -672,5 +736,49 @@ mod tests {
         let r = dashboard_response(&layout, &scan);
         assert!(r.hourly_stats.is_empty() && r.daily_stats.is_empty() && r.top_urls.is_empty());
         assert_eq!(r.summary, DashboardSummary::default());
+    }
+
+    #[test]
+    fn regions_count_both_levels_and_points_carry_their_coordinates() {
+        let (schema, f) = crate::schema::build();
+        let index = tantivy::Index::create_in_ram(schema);
+        crate::tokenizer::register(&index);
+        let mut w = index.writer_with_num_threads::<tantivy::TantivyDocument>(1, 15_000_000).unwrap();
+        let docs = [
+            ("FR", "FR-IDF", "FR-75", "FR|Paris|48.86|2.35"),
+            ("FR", "FR-IDF", "FR-75", "FR|Paris|48.86|2.35"),
+            ("FR", "FR-ARA", "FR-69", "FR|Lyon|45.76|4.83"),
+            ("US", "US-CA", "", "US|San Jose|37.34|-121.89"),
+        ];
+        for (country, sub1, sub2, point) in docs {
+            let mut d = tantivy::TantivyDocument::default();
+            d.add_i64(f.ts, 100);
+            d.add_text(f.main_log_path, "/l/a.log");
+            d.add_text(f.region_code, country);
+            d.add_text(f.sub1, sub1);
+            if !sub2.is_empty() {
+                d.add_text(f.sub2, sub2);
+            }
+            d.add_text(f.city_point, point);
+            w.add_document(d).unwrap();
+        }
+        w.commit().unwrap();
+        let searcher = index.reader().unwrap().searcher();
+        let filter = Filter::default();
+
+        let fr = regions(&searcher, &f, &filter, "FR", 10).unwrap();
+        let get = |code: &str| fr.iter().find(|s| s.key == code).map(|s| (s.value, s.percent.round() as i64));
+        assert_eq!(get("FR-IDF"), Some((2, 67)));
+        assert_eq!(get("FR-75"), Some((2, 67)));
+        assert_eq!(get("FR-69"), Some((1, 33)));
+        assert_eq!(get("US-CA"), None, "another country is left out");
+
+        let all = city_points(&searcher, &f, &filter, None, 10).unwrap();
+        assert_eq!(all[0].city, "Paris");
+        assert_eq!((all[0].lat, all[0].lon, all[0].value), (48.86, 2.35, 2));
+        assert_eq!(all.len(), 3);
+        let us = city_points(&searcher, &f, &filter, Some("US"), 10).unwrap();
+        assert_eq!(us.len(), 1);
+        assert_eq!((us[0].country.as_str(), us[0].lon, us[0].percent), ("US", -121.89, 100.0));
     }
 }
