@@ -28,3 +28,16 @@ describe('search syntax help', () => {
     }
   })
 })
+
+describe('query warnings', () => {
+  test('say what happened to each part in plain words', async () => {
+    const { warningText } = await import('../src/views/structured/components/search-syntax')
+    const reasons = ['unknown_field', 'invalid_value', 'unterminated_quote', 'too_many_terms', 'something_new']
+    const texts = reasons.map(reason => warningText({ token: 'foo:bar', reason }))
+    expect(new Set(texts).size).toBe(reasons.length)
+    for (const text of texts.filter((_, i) => reasons[i] !== 'too_many_terms'))
+      expect(text).toContain('foo:bar')
+    for (const text of texts)
+      expect(text).not.toMatch(/_|reason|token/)
+  })
+})

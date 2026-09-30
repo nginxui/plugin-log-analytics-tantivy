@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { TableSorterResult as SorterResult, TablePaginationConfig } from 'antdv-next'
+import type { QueryWarning } from './components/search-syntax'
 import type { AccessLogEntry, AdvancedSearchRequest, IndexReadyEvent, PreflightResponse } from '@/api/types'
 import { DownOutlined, ReloadOutlined } from '@antdv-next/icons'
 import {
+  Alert as AAlert,
   Button as AButton,
   Dropdown as ADropdown,
   Empty as AEmpty,
@@ -23,6 +25,7 @@ import { errorMessage, isPathError } from '@/errors'
 import { $gettext, currentLanguage } from '@/gettext'
 import { useStatus } from '@/store/status'
 import { bytesToSize } from '@/utils'
+import { warningText } from './components/search-syntax'
 import SearchFilters from './components/SearchFilters.vue'
 import { getInitialStructuredTimeRange } from './timeRange'
 
@@ -105,6 +108,8 @@ const filteredEntries = computed(() => {
 
 // Summary stats from search response
 const searchSummary = ref<SearchSummary | null>(null)
+// Parts of the search box that were not read as the syntax they looked like.
+const queryWarnings = ref<QueryWarning[]>([])
 
 // Check if current file is being indexed (from WebSocket progress events)
 const isCurrentFileIndexing = computed(() => {
@@ -374,6 +379,7 @@ async function performAdvancedSearch() {
     searchResults.value = result.entries || []
     searchTotal.value = result.total || 0
     searchSummary.value = result.summary || null
+    queryWarnings.value = result.query_warnings ?? []
   }
   catch (error: unknown) {
     // Check if this is a path validation error - don't show message for these
@@ -388,6 +394,7 @@ async function performAdvancedSearch() {
     searchResults.value = []
     searchTotal.value = 0
     searchSummary.value = null
+    queryWarnings.value = []
     message.error(errorMessage(error))
   }
   finally {
@@ -687,6 +694,22 @@ watch(timeRange, () => {
           @search="performAdvancedSearch"
           @reset="resetSearchFilters"
         />
+
+        <AAlert
+          v-if="queryWarnings.length > 0"
+          type="warning"
+          show-icon
+          class="la-mb-4"
+          :title="$gettext('Part of the search was not applied as written')"
+        >
+          <template #description>
+            <ul class="la-m-0 la-pl-4">
+              <li v-for="(warning, index) in queryWarnings" :key="index">
+                {{ warningText(warning) }}
+              </li>
+            </ul>
+          </template>
+        </AAlert>
 
         <!-- Sort Info -->
         <div v-if="sortBy" class="la-mb-4 la-p-2 la-bg-blue-50 dark:la-bg-blue-900/20 la-rounded la-border la-border-blue-200 dark:la-border-blue-800">

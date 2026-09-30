@@ -163,5 +163,35 @@
     "zh_CN": "中国地图轮廓文件所在目录。留空则使用插件自己的目录，目录中没有的文件会在线加载。",
     "zh_TW": "中國地圖輪廓檔案所在目錄。留空則使用外掛自己的目錄，目錄中沒有的檔案會從線上載入。",
     "ja_JP": "中国の地図の輪郭ファイルがあるディレクトリです。空欄の場合はプラグイン専用のフォルダを使います。そこにないファイルはオンラインから読み込みます。"
+  },
+  "\"%{token}\" does not name a known field and was searched as text.": {
+    "zh_CN": "“%{token}”不是可识别的字段，已按普通文本搜索。",
+    "zh_TW": "「%{token}」不是可識別的欄位，已按一般文字搜尋。",
+    "ja_JP": "「%{token}」は既知のフィールドではないため、テキストとして検索しました。"
+  },
+  "The value in \"%{token}\" is not valid for this field and was searched as text.": {
+    "zh_CN": "“%{token}”中的值不符合该字段的格式，已按普通文本搜索。",
+    "zh_TW": "「%{token}」中的值不符合該欄位的格式，已按一般文字搜尋。",
+    "ja_JP": "「%{token}」の値はこのフィールドに対して無効なため、テキストとして検索しました。"
+  },
+  "The quotation mark in \"%{token}\" is not closed and was searched as text.": {
+    "zh_CN": "“%{token}”中的引号未闭合，已按普通文本搜索。",
+    "zh_TW": "「%{token}」中的引號未閉合，已按一般文字搜尋。",
+    "ja_JP": "「%{token}」の引用符が閉じられていないため、テキストとして検索しました。"
+  },
+  "The search is too long. Only the first 64 terms were used.": {
+    "zh_CN": "搜索内容过长，仅使用了前 64 个条件。",
+    "zh_TW": "搜尋內容過長，僅使用了前 64 個條件。",
+    "ja_JP": "検索が長すぎるため、最初の 64 個の条件のみを使用しました。"
+  },
+  "\"%{token}\" was searched as text.": {
+    "zh_CN": "“%{token}”已按普通文本搜索。",
+    "zh_TW": "「%{token}」已按一般文字搜尋。",
+    "ja_JP": "「%{token}」はテキストとして検索しました。"
+  },
+  "Part of the search was not applied as written": {
+    "zh_CN": "部分搜索条件未按所写方式生效",
+    "zh_TW": "部分搜尋條件未按所寫方式生效",
+    "ja_JP": "検索条件の一部は記述どおりに適用されませんでした"
   }
 }

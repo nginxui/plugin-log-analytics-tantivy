@@ -22,3 +22,25 @@ export function syntaxRows(): SyntaxRow[] {
     { examples: ['"union select"'], meaning: $gettext('Words that belong together') },
   ]
 }
+
+export interface QueryWarning {
+  token: string
+  reason: string
+}
+
+/** A sentence for a part of the search box that was read as plain text or left out. */
+export function warningText(warning: QueryWarning): string {
+  const token = warning.token
+  switch (warning.reason) {
+    case 'unknown_field':
+      return $gettext('"%{token}" does not name a known field and was searched as text.', { token })
+    case 'invalid_value':
+      return $gettext('The value in "%{token}" is not valid for this field and was searched as text.', { token })
+    case 'unterminated_quote':
+      return $gettext('The quotation mark in "%{token}" is not closed and was searched as text.', { token })
+    case 'too_many_terms':
+      return $gettext('The search is too long. Only the first 64 terms were used.')
+    default:
+      return $gettext('"%{token}" was searched as text.', { token })
+  }
+}
