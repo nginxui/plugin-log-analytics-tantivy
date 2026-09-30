@@ -46,6 +46,11 @@ tempfile = "3"
 [profile.dev]
 debug = 0
 
+# The phrase scorer of tantivy asserts an order that an excluded phrase does
+# not keep; release builds skip the check and return the right documents.
+[profile.dev.package.tantivy]
+debug-assertions = false
+
 [profile.test]
 debug = 0
 
