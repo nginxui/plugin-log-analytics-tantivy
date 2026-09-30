@@ -9,7 +9,7 @@ use crate::tokenizer;
 /// Version of the on disk format. The index is recreated when it differs, see
 /// [`crate::engine`]. Bump it with every change of the schema, the analyzers
 /// or what a document means.
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// Handles to every field of the log index.
 #[derive(Clone, Debug)]
@@ -43,6 +43,8 @@ pub struct Fields {
     pub main_log_path: Field,
     /// First line fingerprint of the content the line comes from.
     pub fp: Field,
+    /// Severity of an error log entry, empty for an access log line.
+    pub level: Field,
     /// Byte offset of the line in the decompressed content.
     pub off: Field,
 }
@@ -120,6 +122,7 @@ pub fn build() -> (Schema, Fields) {
         main_log_path: b.add_text_field("main_log_path", keyword()),
         fp: b.add_text_field("fp", keyword()),
         off: b.add_u64_field("off", NumericOptions::default().set_fast()),
+        level: b.add_text_field("level", keyword_fast()),
     };
     (b.build(), fields)
 }

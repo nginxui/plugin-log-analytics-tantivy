@@ -22,6 +22,13 @@ fn resolve(naive: NaiveDateTime) -> i64 {
     }
 }
 
+/// Timestamp of a wall clock time in the local zone, `None` for an invalid
+/// date. Error logs of nginx write their times this way.
+pub fn from_local(year: i32, month: u32, day: u32, hour: u32, minute: u32, second: u32) -> Option<i64> {
+    let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(hour, minute, second)?;
+    Some(resolve(naive))
+}
+
 /// Local calendar date of a timestamp as `year * 10000 + month * 100 + day`.
 pub fn date_key(ts: i64) -> i32 {
     let d = local(ts);

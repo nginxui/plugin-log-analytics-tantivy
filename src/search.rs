@@ -68,7 +68,7 @@ pub fn search(searcher: &Searcher, fields: &Fields, params: &SearchParams) -> ta
         "request_time" => run(searcher, q.as_ref(), top().order_by_fast_field::<f64>("request_time", order), |h| {
             h.into_iter().map(|(_, a)| a).collect()
         }),
-        name @ ("ip" | "method" | "browser" | "os" | "device_type" | "region_code" | "province" | "city") => {
+        name @ ("ip" | "method" | "browser" | "os" | "device_type" | "region_code" | "province" | "city" | "level") => {
             run(searcher, q.as_ref(), top().order_by_string_fast_field(name, order), |h| {
                 h.into_iter().map(|(_, a)| a).collect()
             })
@@ -83,6 +83,7 @@ pub fn search(searcher: &Searcher, fields: &Fields, params: &SearchParams) -> ta
 struct SegmentColumns {
     ts: Option<Column<i64>>,
     ip: Option<StrColumn>,
+    level: Option<StrColumn>,
     geo: [Option<StrColumn>; 7],
 }
 
@@ -97,6 +98,7 @@ pub struct EntryLoader<'a> {
     ua: Arc<UaParser>,
     columns: HashMap<u32, SegmentColumns>,
     times: TimeCache,
+    error_times: TimeCache,
 }
 
 fn text_at(col: &Option<StrColumn>, doc: u32, buf: &mut String) -> String {
@@ -112,7 +114,14 @@ fn text_at(col: &Option<StrColumn>, doc: u32, buf: &mut String) -> String {
 
 impl<'a> EntryLoader<'a> {
     pub fn new(searcher: &'a Searcher, fields: &'a Fields) -> Self {
-        Self { searcher, fields, ua: useragent::parser().clone(), columns: HashMap::new(), times: TimeCache::default() }
+        Self {
+            searcher,
+            fields,
+            ua: useragent::parser().clone(),
+            columns: HashMap::new(),
+            times: TimeCache::default(),
+            error_times: TimeCache::default(),
+        }
     }
 
     fn columns(&mut self, segment: u32) -> tantivy::Result<&SegmentColumns> {
@@ -123,7 +132,10 @@ impl<'a> EntryLoader<'a> {
             for (slot, name) in geo.iter_mut().zip(GEO_FIELDS) {
                 *slot = ff.str(name)?;
             }
-            self.columns.insert(segment, SegmentColumns { ts: ff.column_opt::<i64>("ts")?, ip: ff.str("ip")?, geo });
+            self.columns.insert(
+                segment,
+                SegmentColumns { ts: ff.column_opt::<i64>("ts")?, ip: ff.str("ip")?, level: ff.str("level")?, geo },
+            );
         }
         Ok(&self.columns[&segment])
     }
@@ -136,6 +148,10 @@ impl<'a> EntryLoader<'a> {
         let mut buf = String::new();
         let ts = cols.ts.as_ref().and_then(|c| c.first(address.doc_id)).unwrap_or(0);
         let ip = text_at(&cols.ip, address.doc_id, &mut buf);
+        let level = text_at(&cols.level, address.doc_id, &mut buf);
+        if !level.is_empty() {
+            return Ok(error_entry(ts, &level, &raw, &mut self.error_times));
+        }
         let mut geo: Vec<String> = Vec::with_capacity(7);
         for col in &cols.geo {
             geo.push(text_at(col, address.doc_id, &mut buf));
@@ -189,6 +205,28 @@ impl<'a> EntryLoader<'a> {
         m.insert("raw".into(), json!(raw));
         Ok(m)
     }
+}
+
+/// The entry of an error log hit, read from its line. `referer` and `ip` use
+/// the names of the access entries so the pages share their cells.
+fn error_entry(ts: i64, level: &str, raw: &str, times: &mut TimeCache) -> Map<String, Value> {
+    let parsed = parse::parse_error_line(raw, times).unwrap_or_default();
+    let mut m = Map::new();
+    m.insert("timestamp".into(), json!(ts));
+    m.insert("level".into(), json!(level));
+    m.insert("pid".into(), json!(parsed.pid));
+    m.insert("connection".into(), json!(parsed.connection));
+    m.insert("message".into(), json!(parsed.message));
+    m.insert("ip".into(), json!(parsed.client));
+    m.insert("server".into(), json!(parsed.server));
+    m.insert("request".into(), json!(parsed.request));
+    m.insert("method".into(), json!(parsed.method));
+    m.insert("path".into(), json!(parsed.path));
+    m.insert("upstream".into(), json!(parsed.upstream));
+    m.insert("host".into(), json!(parsed.host));
+    m.insert("referer".into(), json!(parsed.referrer));
+    m.insert("raw".into(), json!(raw));
+    m
 }
 
 fn text_of(entry: &Map<String, Value>, key: &str) -> String {

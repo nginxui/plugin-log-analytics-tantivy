@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::engine::{Engine, Phase};
-use crate::logs::{clean_path, decode_path_param};
+use crate::logs::{clean_path, decode_path_param, ACCESS_KIND, ERROR_KIND};
 
 #[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
 pub struct TimeRange {
@@ -76,7 +76,7 @@ fn item(engine: &Engine, group: &crate::logs::LogGroup) -> LogStatusItem {
     let saved = state.group(&group.path);
     let rows = saved.map(|g| g.files.as_slice()).unwrap_or(&[]);
     let last_indexed = rows.iter().map(|r| r.indexed_at).max().unwrap_or(0);
-    let is_access = group.kind == "access";
+    let indexed = group.kind == ACCESS_KIND || group.kind == ERROR_KIND;
 
     let mut it = LogStatusItem {
         path: group.path.clone(),
@@ -101,7 +101,7 @@ fn item(engine: &Engine, group: &crate::logs::LogGroup) -> LogStatusItem {
         retry_count: 0,
         queue_position: 0,
     };
-    if !is_access {
+    if !indexed {
         return it;
     }
 

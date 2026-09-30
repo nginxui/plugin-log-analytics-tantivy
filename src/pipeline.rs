@@ -84,6 +84,9 @@ pub struct GroupRun<'a> {
     /// Called with the state that was just committed and the changes of the
     /// rollups that belong to it.
     pub on_commit: &'a CommitHook<'a>,
+    /// The group is an error log: its lines are error entries and it has no
+    /// rollup.
+    pub error_log: bool,
 }
 
 /// What the owner of the index does after a commit.
@@ -242,6 +245,42 @@ pub fn build_doc(
     d
 }
 
+/// Builds the document of one valid error log entry. The client, request and
+/// referrer fill the fields an access log line uses, the message is searched
+/// through the stored line.
+pub fn build_error_doc(
+    f: &Fields,
+    entry: &parse::ErrorEntry<'_>,
+    raw: &str,
+    group: &str,
+    fingerprint: &str,
+    offset: u64,
+) -> TantivyDocument {
+    let mut d = TantivyDocument::default();
+    d.add_i64(f.ts, entry.ts);
+    d.add_text(f.level, entry.level);
+    d.add_text(f.raw, raw);
+    d.add_text(f.main_log_path, group);
+    d.add_text(f.fp, doc_fingerprint(fingerprint));
+    d.add_u64(f.off, offset);
+    if !entry.client.is_empty() {
+        d.add_text(f.ip, entry.client);
+        if let Some(addr) = crate::qsyntax::ip_to_v6(entry.client) {
+            d.add_ip_addr(f.ip_addr, addr);
+        }
+    }
+    if !entry.method.is_empty() {
+        d.add_text(f.method, entry.method);
+    }
+    if !entry.path.is_empty() {
+        d.add_text(f.path, entry.path);
+    }
+    if !entry.referrer.is_empty() {
+        d.add_text(f.referer, entry.referrer);
+    }
+    d
+}
+
 /// Commits with the state as payload and lets the caller reload its reader.
 pub fn commit_state(
     writer: &SharedWriter,
@@ -321,6 +360,24 @@ pub fn run_group(run: &GroupRun<'_>) -> Result<GroupOutcome, String> {
                         let (mut added, mut bad) = (0u64, 0u64);
                         let mut rollup = RollupBuilder::default();
                         for (line, offset) in &batch.lines {
+                            if run.error_log {
+                                let Some(entry) =
+                                    parse::parse_error_line(line, &mut times).filter(|e| parse::is_valid_error(e, now))
+                                else {
+                                    bad += 1;
+                                    continue;
+                                };
+                                let doc =
+                                    build_error_doc(run.fields, &entry, line, run.group, &batch.fingerprint, *offset);
+                                if let Err(e) = w.add_document(doc) {
+                                    failed(format!("add document: {e}"));
+                                    break;
+                                }
+                                run.progress.min_ts.fetch_min(entry.ts, Ordering::Relaxed);
+                                run.progress.max_ts.fetch_max(entry.ts, Ordering::Relaxed);
+                                added += 1;
+                                continue;
+                            }
                             let Some(entry) =
                                 parse::parse_line(line, &mut times).filter(|e| parse::is_valid(e, line, now))
                             else {

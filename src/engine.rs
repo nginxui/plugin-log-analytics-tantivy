@@ -18,7 +18,7 @@ use crate::config::{Dirs, Settings};
 use crate::events::{Hub, Processing};
 use crate::filesync::{self, PlanOptions};
 use crate::geo::{Geo, GeoPaths};
-use crate::logs::{HostLogs, LogGroup};
+use crate::logs::{HostLogs, LogGroup, ACCESS_KIND, ERROR_KIND};
 use crate::pipeline::{self, CommitHook, GroupOutcome, GroupProgress, GroupRun, SharedWriter};
 use crate::rollup::{Delta, GroupRollup, RollupCollector, Rollups, Slot};
 use crate::sizing::{self, Sizing};
@@ -292,7 +292,8 @@ impl Engine {
 
     /// The groups of a scope that have an access log to index.
     fn groups_in(&self, scope: &Scope) -> Vec<LogGroup> {
-        let groups: Vec<LogGroup> = self.hostlogs.groups().into_iter().filter(|g| g.kind == "access").collect();
+        let groups: Vec<LogGroup> =
+            self.hostlogs.groups().into_iter().filter(|g| g.kind == ACCESS_KIND || g.kind == ERROR_KIND).collect();
         match scope {
             Scope::All => groups,
             Scope::Group(path) => groups.into_iter().filter(|g| &g.path == path).collect(),
@@ -392,7 +393,9 @@ impl Engine {
 
     fn round_blocking(self: &Arc<Self>, planned: Vec<PlannedGroup>, scope: &Scope, rebuild: bool) -> RoundReport {
         let sizing = self.sizing();
-        let planned_paths: Vec<String> = planned.iter().map(|p| p.group.path.clone()).collect();
+        // Error logs have no rollup to prepare
+        let planned_paths: Vec<String> =
+            planned.iter().filter(|p| p.group.kind != ERROR_KIND).map(|p| p.group.path.clone()).collect();
         let mut report = RoundReport { groups: planned.len(), ..Default::default() };
 
         let writer: SharedWriter = match self.store.writer(&sizing) {
@@ -560,10 +563,14 @@ impl Engine {
         on_commit: &CommitHook<'_>,
     ) -> Result<GroupOutcome, String> {
         let path = group.path.clone();
-        // A group without documents counts them into its rollup as they come
-        self.rollups.begin_group(&path, || {
-            self.store.searcher().search(self.group_query(&path).as_ref(), &Count).map_or(1, |n| n as u64)
-        });
+        let error_log = group.kind == ERROR_KIND;
+        // A group without documents counts them into its rollup as they come.
+        // Error logs have no dashboard and so no rollup.
+        if !error_log {
+            self.rollups.begin_group(&path, || {
+                self.store.searcher().search(self.group_query(&path).as_ref(), &Count).map_or(1, |n| n as u64)
+            });
+        }
         self.set_phase(&path, Some(Phase::Indexing));
         self.hub.progress(&path, 0.0, "scanning", "running", 0, 0);
 
@@ -622,6 +629,7 @@ impl Engine {
                 options,
                 rollups: &self.rollups,
                 on_commit,
+                error_log,
             };
             let result = pipeline::run_group(&run);
             finished.store(true, Ordering::Relaxed);

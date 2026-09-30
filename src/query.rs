@@ -39,6 +39,8 @@ pub struct Filter {
     pub browsers: Vec<String>,
     pub systems: Vec<String>,
     pub devices: Vec<String>,
+    /// Error log levels, lower case.
+    pub levels: Vec<String>,
 }
 
 fn term(field: Field, text: &str) -> Box<dyn Query> {
@@ -148,6 +150,7 @@ fn kind_query(f: &Fields, kind: &Kind) -> Box<dyn Query> {
         Kind::City(v) => keyword_ci(f.city, v),
         Kind::Bytes(span) => range_of(span, |v| Term::from_field_u64(f.bytes_sent, v)),
         Kind::RequestTime(span) => range_of(span, |v| Term::from_field_f64(f.request_time, v)),
+        Kind::Level(v) => term(f.level, v),
     }
 }
 
@@ -202,6 +205,7 @@ pub fn build(f: &Fields, filter: &Filter) -> Box<dyn Query> {
     clauses.extend(any_of(f.browser, &filter.browsers));
     clauses.extend(any_of(f.os, &filter.systems));
     clauses.extend(any_of(f.device_type, &filter.devices));
+    clauses.extend(any_of(f.level, &filter.levels));
 
     if !excluded.is_empty() {
         let mut parts: Vec<(Occur, Box<dyn Query>)> = clauses.into_iter().map(|q| (Occur::Must, q)).collect();
@@ -530,5 +534,34 @@ mod tests {
         assert_eq!(hits(&index, &f, "\"wp-login.php 192.168\""), [100]);
         assert_eq!(hits(&index, &f, "\"wp-login.php 192.168.1.10\""), [100]);
         assert!(hits(&index, &f, "\"wp-login.php 10.0\"").is_empty());
+    }
+
+    #[test]
+    fn error_entries_match_by_level_and_text() {
+        let (schema, f) = schema::build();
+        let index = tantivy::Index::create_in_ram(schema);
+        crate::tokenizer::register(&index);
+        let mut w = index.writer_with_num_threads::<tantivy::TantivyDocument>(1, 15_000_000).unwrap();
+        let mut times = crate::parse::TimeCache::default();
+        for line in [
+            "2026/09/07 15:32:29 [error] 1#1: *1 open() failed, client: 1.1.1.1, server: a, request: \"GET /x HTTP/1.1\"",
+            "2026/09/07 15:32:30 [warn] 1#1: *2 upstream response is buffered, client: 2.2.2.2, server: a",
+            "2026/09/07 15:32:31 [notice] 1#1: signal process started",
+        ] {
+            let e = crate::parse::parse_error_line(line, &mut times).unwrap();
+            w.add_document(crate::pipeline::build_error_doc(&f, &e, line, "/l/error.log", "x", 0)).unwrap();
+        }
+        w.commit().unwrap();
+        let text = |t: &str| count(&index, &f, &Filter { text: t.into(), ..Default::default() });
+        assert_eq!(text("level:error"), 1);
+        assert_eq!(text("level:WARNING"), 1);
+        assert_eq!(text("-level:notice"), 2);
+        assert_eq!(text("ip:1.1.1.0/24"), 1);
+        assert_eq!(text("path:/x"), 1);
+        assert_eq!(text("buffered"), 1);
+        let levels = |l: &[&str]| {
+            count(&index, &f, &Filter { levels: l.iter().map(|s| (*s).to_owned()).collect(), ..Default::default() })
+        };
+        assert_eq!(levels(&["error", "warn"]), 2);
     }
 }

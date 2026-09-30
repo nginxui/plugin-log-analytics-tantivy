@@ -45,6 +45,8 @@ pub struct SearchRequest {
     pub browser: String,
     pub os: String,
     pub device: String,
+    /// Error log levels, comma separated.
+    pub level: String,
     pub limit: i64,
     pub offset: i64,
     pub sort_by: String,
@@ -85,6 +87,7 @@ fn filter_of(request: &SearchRequest, group: &str, now: i64) -> Filter {
         browsers: split_comma(&request.browser),
         systems: split_comma(&request.os),
         devices: split_comma(&request.device),
+        levels: split_comma(&request.level).iter().filter_map(|l| qsyntax::level_of(l)).map(str::to_owned).collect(),
         ..Default::default()
     }
 }

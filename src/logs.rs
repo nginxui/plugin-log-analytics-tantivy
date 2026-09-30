@@ -12,6 +12,11 @@ use regex::Regex;
 /// web application firewall from reading it as a traversal attempt.
 pub const ENCODED_PATH_PREFIX: &str = "b64_";
 
+/// Kind of an access log.
+pub const ACCESS_KIND: &str = "access";
+/// Kind of an error log.
+pub const ERROR_KIND: &str = "error";
+
 /// One log file the host lists.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostLog {
@@ -104,7 +109,7 @@ impl HostLogs {
         self.snapshot()
             .entries
             .iter()
-            .find(|l| l.kind == "access" && l.source == "default")
+            .find(|l| l.kind == ACCESS_KIND && l.source == "default")
             .map(|l| l.path.clone())
             .unwrap_or_default()
     }

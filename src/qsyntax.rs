@@ -59,6 +59,8 @@ pub enum Kind {
     City(String),
     Bytes(Span<u64>),
     RequestTime(Span<f64>),
+    /// Severity of an error log entry, lower case.
+    Level(String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +84,7 @@ pub struct Parsed {
 }
 
 /// The field names of the syntax, with their aliases.
-const FIELDS: [&str; 18] = [
+const FIELDS: [&str; 19] = [
     "status",
     "method",
     "ip",
@@ -101,6 +103,7 @@ const FIELDS: [&str; 18] = [
     "rt",
     "request_time",
     "time",
+    "level",
 ];
 
 /// The IPv6 form of an address text: IPv4 is mapped into IPv6.
@@ -172,6 +175,20 @@ fn ip_range(value: &str) -> Option<(u128, u128)> {
     Some((lo, lo | !mask))
 }
 
+/// An error log level as the index keeps it, `None` for an unknown one.
+/// `warning` and `err` are taken for the names nginx writes.
+pub fn level_of(value: &str) -> Option<&'static str> {
+    let lower = value.to_ascii_lowercase();
+    let name = match lower.as_str() {
+        "warning" => "warn",
+        "err" => "error",
+        "critical" => "crit",
+        "emergency" => "emerg",
+        other => other,
+    };
+    crate::parse::ERROR_LEVELS.iter().copied().find(|l| *l == name)
+}
+
 /// The filter a `name:value` token stands for, `None` when the value is malformed.
 fn field_kind(name: &str, value: &str) -> Option<Kind> {
     let text = |make: fn(String) -> Kind| (!value.is_empty()).then(|| make(value.to_owned()));
@@ -190,6 +207,7 @@ fn field_kind(name: &str, value: &str) -> Option<Kind> {
         "city" => text(Kind::City),
         "bytes" => span_of::<u64>(value, |_| true).map(Kind::Bytes),
         "rt" | "request_time" | "time" => span_of::<f64>(value, |v| v.is_finite() && *v >= 0.0).map(Kind::RequestTime),
+        "level" => level_of(value).map(|l| Kind::Level(l.to_owned())),
         _ => None,
     }
 }
@@ -506,5 +524,15 @@ mod tests {
         let Kind::Text(text) = &parsed.items[0].kind else { panic!("text expected") };
         assert_eq!(text.split(' ').count(), MAX_TOKENS);
         assert_eq!(parsed.warnings.last().map(|w| w.reason), Some("too_many_terms"));
+    }
+
+    #[test]
+    fn levels_take_the_names_nginx_writes() {
+        assert_eq!(level_of("warning"), Some("warn"));
+        assert_eq!(level_of("ERROR"), Some("error"));
+        assert_eq!(level_of("crit"), Some("crit"));
+        assert_eq!(level_of("fatal"), None);
+        assert_eq!(parse("level:err").items, [Item { exclude: false, kind: Kind::Level("error".into()) }]);
+        assert_eq!(parse("level:fatal").warnings[0].reason, "invalid_value");
     }
 }

@@ -30,6 +30,17 @@ fn bad_date(field: &str, e: impl std::fmt::Display) -> ApiError {
     )
 }
 
+/// Refuses a group that is an error log: its entries have no traffic figures.
+fn access_only(app: &App, group: &str) -> Result<(), ApiError> {
+    match app.engine.hostlogs.group_of(group) {
+        Some(g) if g.kind == crate::logs::ERROR_KIND => Err(ApiError::Plain(
+            StatusCode::BAD_REQUEST,
+            json!({"error": "The dashboard and the maps are only available for access logs"}),
+        )),
+        _ => Ok(()),
+    }
+}
+
 fn now() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
 }
@@ -56,6 +67,7 @@ fn window(request: &DashboardRequest, now: i64) -> Result<(i64, i64), ApiError> 
 pub async fn dashboard(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
     let request: DashboardRequest = respond::read_json(req).await?;
     let group = resolve_group(app, &request.log_path, true)?;
+    access_only(app, &group)?;
     let (start, end) = window(&request, now())?;
 
     let app = app.clone();
@@ -78,6 +90,7 @@ where
 {
     let request: AnalyticsRequest = respond::read_json(req).await?;
     let group = resolve_group(app, &request.path, true)?;
+    access_only(app, &group)?;
     let app = app.clone();
     tokio::task::spawn_blocking(move || -> Result<Resp, ApiError> {
         analytics::validate_range(request.start_time, request.end_time)?;
@@ -128,6 +141,7 @@ pub async fn china_city(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, 
     }
     let request: AnalyticsRequest = serde_json::from_slice(&bytes).map_err(|e| ApiError::Validate(e.to_string()))?;
     let group = resolve_group(app, &request.path, true)?;
+    access_only(app, &group)?;
 
     let app = app.clone();
     tokio::task::spawn_blocking(move || -> Result<Resp, ApiError> {

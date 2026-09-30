@@ -227,6 +227,137 @@ pub fn is_valid(e: &Entry<'_>, raw: &str, now: i64) -> bool {
     !(raw.contains("\\x16\\x03") || raw.contains("\\xFF\\xD8"))
 }
 
+/// Severity levels of the nginx error log, from the lowest.
+pub const ERROR_LEVELS: [&str; 8] = ["debug", "info", "notice", "warn", "error", "crit", "alert", "emerg"];
+
+/// One parsed error log line. Text fields borrow from the line.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct ErrorEntry<'a> {
+    pub ts: i64,
+    pub level: &'a str,
+    pub pid: u64,
+    /// Connection number, zero when the line names none.
+    pub connection: u64,
+    pub message: &'a str,
+    pub client: &'a str,
+    pub server: &'a str,
+    pub method: &'a str,
+    pub path: &'a str,
+    pub request: &'a str,
+    pub upstream: &'a str,
+    pub host: &'a str,
+    pub referrer: &'a str,
+}
+
+/// Parses `2026/09/07 15:32:29` in the local zone.
+fn parse_error_time(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() != 19 || b[4] != b'/' || b[7] != b'/' || b[10] != b' ' || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| num(s, r).and_then(|v| u32::try_from(v).ok());
+    crate::localtime::from_local(num(s, 0..4)? as i32, n(5..7)?, n(8..10)?, n(11..13)?, n(14..16)?, n(17..19)?)
+}
+
+/// The context nginx appends to a message, in the order it writes it. Quoted
+/// values escape their own quotes as `\x22`.
+const CONTEXT_KEYS: [(&str, bool); 6] = [
+    (", client: ", false),
+    (", server: ", false),
+    (", request: ", true),
+    (", upstream: ", true),
+    (", host: ", true),
+    (", referrer: ", true),
+];
+
+/// Parses one error log line:
+/// `2026/09/07 15:32:29 [error] 12#12: *34 message, client: 1.2.3.4, ...`.
+/// `None` means the line does not start like an error log entry.
+pub fn parse_error_line<'a>(line: &'a str, cache: &mut TimeCache) -> Option<ErrorEntry<'a>> {
+    if line.len() < 25 || line.len() > MAX_LINE_LEN {
+        return None;
+    }
+    let time_str = line.get(..19)?;
+    let ts = if time_str == cache.text {
+        cache.ts
+    } else {
+        let ts = parse_error_time(time_str)?;
+        cache.text.clear();
+        cache.text.push_str(time_str);
+        cache.ts = ts;
+        ts
+    };
+    let rest = line[19..].strip_prefix(" [")?;
+    let end = rest.find(']')?;
+    let level = &rest[..end];
+    if !ERROR_LEVELS.contains(&level) {
+        return None;
+    }
+    let mut e = ErrorEntry { ts, level, ..Default::default() };
+    let mut rest = rest[end + 1..].trim_start_matches(' ');
+
+    // "12#34: " names the process and the thread
+    if let Some(colon) = rest.find(": ") {
+        if let Some((pid, tid)) = rest[..colon].split_once('#') {
+            if let (Ok(pid), true) = (pid.parse::<u64>(), tid.bytes().all(|b| b.is_ascii_digit())) {
+                e.pid = pid;
+                rest = &rest[colon + 2..];
+            }
+        }
+    }
+    // "*56 " names the connection
+    if let Some(after) = rest.strip_prefix('*') {
+        let digits = after.bytes().take_while(u8::is_ascii_digit).count();
+        if digits > 0 && after.as_bytes().get(digits) == Some(&b' ') {
+            e.connection = after[..digits].parse().unwrap_or(0);
+            rest = &after[digits + 1..];
+        }
+    }
+
+    // The message ends where the first context key starts
+    let first = CONTEXT_KEYS.iter().filter_map(|(k, _)| rest.find(k)).min().unwrap_or(rest.len());
+    e.message = &rest[..first];
+    let mut tail = &rest[first..];
+    for (key, quoted) in CONTEXT_KEYS {
+        let Some(after) = tail.strip_prefix(key) else { continue };
+        let (value, next) = if quoted {
+            match split_quoted(after) {
+                Some((v, next)) => (v, next),
+                None => break,
+            }
+        } else {
+            let end = after.find(", ").unwrap_or(after.len());
+            (&after[..end], &after[end..])
+        };
+        match key {
+            ", client: " => e.client = value,
+            ", server: " => e.server = value,
+            ", request: " => e.request = value,
+            ", upstream: " => e.upstream = value,
+            ", host: " => e.host = value,
+            _ => e.referrer = value,
+        }
+        tail = next.trim_start_matches(' ');
+        if !tail.is_empty() && !tail.starts_with(", ") {
+            break;
+        }
+    }
+    if !e.request.is_empty() {
+        let mut parts = e.request.split_whitespace();
+        if let Some(m) = parts.next().filter(|m| METHODS.contains(m)) {
+            e.method = m;
+            e.path = parts.next().unwrap_or("");
+        }
+    }
+    Some(e)
+}
+
+/// Whether a parsed error entry is worth indexing: its time is known and not
+/// far in the future.
+pub fn is_valid_error(e: &ErrorEntry<'_>, now: i64) -> bool {
+    e.ts > 0 && e.ts <= now + 86400
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,5 +411,56 @@ mod tests {
         let old = r#"10.0.0.1 - - [bad] "GET / HTTP/1.1" 200 0 "-" "-""#;
         let e = parse_line(old, &mut c).unwrap();
         assert!(!is_valid(&e, old, 1_790_000_000));
+    }
+
+    fn local(y: i32, mo: u32, d: u32, h: u32, mi: u32, s: u32) -> i64 {
+        crate::localtime::from_local(y, mo, d, h, mi, s).unwrap()
+    }
+
+    #[test]
+    fn an_error_line_with_its_context() {
+        let line = r#"2026/09/07 15:32:29 [error] 1234#5678: *90 open() "/var/www/favicon.ico" failed (2: No such file or directory), client: 203.0.113.9, server: example.com, request: "GET /favicon.ico HTTP/1.1", upstream: "http://127.0.0.1:8080/favicon.ico", host: "example.com", referrer: "https://example.com/a, b""#;
+        let e = parse_error_line(line, &mut TimeCache::default()).unwrap();
+        assert_eq!(e.ts, local(2026, 9, 7, 15, 32, 29));
+        assert_eq!((e.level, e.pid, e.connection), ("error", 1234, 90));
+        assert_eq!(e.message, r#"open() "/var/www/favicon.ico" failed (2: No such file or directory)"#);
+        assert_eq!((e.client, e.server), ("203.0.113.9", "example.com"));
+        assert_eq!((e.method, e.path), ("GET", "/favicon.ico"));
+        assert_eq!(e.upstream, "http://127.0.0.1:8080/favicon.ico");
+        assert_eq!(e.host, "example.com");
+        assert_eq!(e.referrer, "https://example.com/a, b");
+    }
+
+    #[test]
+    fn an_error_line_without_connection_or_context() {
+        let e = parse_error_line("2026/09/07 15:32:29 [notice] 1#1: signal process started", &mut TimeCache::default())
+            .unwrap();
+        assert_eq!((e.level, e.pid, e.connection), ("notice", 1, 0));
+        assert_eq!(e.message, "signal process started");
+        assert_eq!((e.client, e.request, e.method), ("", "", ""));
+
+        let e = parse_error_line(
+            "2026/09/07 15:32:29 [warn] 7#7: *3 an upstream response is buffered, client: ::1, server: _",
+            &mut TimeCache::default(),
+        )
+        .unwrap();
+        assert_eq!((e.client, e.server), ("::1", "_"));
+    }
+
+    #[test]
+    fn lines_that_are_not_error_entries() {
+        let mut cache = TimeCache::default();
+        assert!(parse_error_line("    at continuation of a previous message", &mut cache).is_none());
+        assert!(parse_error_line("2026/09/07 15:32:29 [verbose] 1#1: x", &mut cache).is_none());
+        assert!(parse_error_line("2026/13/07 15:32:29 [error] 1#1: x", &mut cache).is_none());
+        let access = r#"1.2.3.4 - - [07/Sep/2026:15:32:29 +0000] "GET / HTTP/1.1" 200 5 "-" "-""#;
+        assert!(parse_error_line(access, &mut cache).is_none());
+    }
+
+    #[test]
+    fn error_entries_in_the_future_are_dropped() {
+        let e = parse_error_line("2026/09/07 15:32:29 [error] 1#1: x", &mut TimeCache::default()).unwrap();
+        assert!(is_valid_error(&e, e.ts));
+        assert!(!is_valid_error(&e, e.ts - 2 * 86400));
     }
 }
