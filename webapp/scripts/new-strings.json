@@ -98,5 +98,70 @@
     "zh_CN": "索引设置",
     "zh_TW": "索引設定",
     "ja_JP": "インデックス設定"
+  },
+  "Search syntax": {
+    "zh_CN": "搜索语法",
+    "zh_TW": "搜尋語法",
+    "ja_JP": "検索構文"
+  },
+  "Separate words and filters with spaces. A line has to match all of them.": {
+    "zh_CN": "用空格分隔关键词和筛选条件，一行日志必须同时满足所有条件。",
+    "zh_TW": "用空格分隔關鍵字和篩選條件，一行日誌必須同時符合所有條件。",
+    "ja_JP": "単語と絞り込み条件はスペースで区切ります。すべてに一致する行のみが対象になります。"
+  },
+  "Status code, status class or range of codes": {
+    "zh_CN": "状态码、状态码类别或状态码范围",
+    "zh_TW": "狀態碼、狀態碼類別或狀態碼範圍",
+    "ja_JP": "ステータスコード、ステータスの種別、またはコードの範囲"
+  },
+  "Request method": {
+    "zh_CN": "请求方法",
+    "zh_TW": "請求方法",
+    "ja_JP": "リクエストメソッド"
+  },
+  "Client address or network": {
+    "zh_CN": "客户端地址或网段",
+    "zh_TW": "用戶端位址或網段",
+    "ja_JP": "クライアントのアドレスまたはネットワーク"
+  },
+  "Words of the request path, in order": {
+    "zh_CN": "请求路径中的词，按顺序匹配",
+    "zh_TW": "請求路徑中的詞，依順序比對",
+    "ja_JP": "リクエストパスの単語（順序どおり）"
+  },
+  "Words of the user agent or of the referer, in order": {
+    "zh_CN": "User-Agent 或来源页中的词，按顺序匹配",
+    "zh_TW": "User-Agent 或來源頁中的詞，依順序比對",
+    "ja_JP": "User-Agent またはリファラーの単語（順序どおり）"
+  },
+  "Browser, operating system or device type": {
+    "zh_CN": "浏览器、操作系统或设备类型",
+    "zh_TW": "瀏覽器、作業系統或裝置類型",
+    "ja_JP": "ブラウザー、オペレーティングシステム、またはデバイスの種類"
+  },
+  "Country code, province or city of the client": {
+    "zh_CN": "客户端的国家代码、省份或城市",
+    "zh_TW": "用戶端的國家代碼、省份或城市",
+    "ja_JP": "クライアントの国コード、都道府県または市区町村"
+  },
+  "Bytes sent or request time in seconds, with a comparison or a range": {
+    "zh_CN": "发送字节数或请求耗时（秒），可使用比较符或范围",
+    "zh_TW": "傳送位元組數或請求耗時（秒），可使用比較符或範圍",
+    "ja_JP": "送信バイト数またはリクエスト時間（秒）。比較演算子または範囲を指定できます"
+  },
+  "Leaves out the lines that match": {
+    "zh_CN": "排除匹配的行",
+    "zh_TW": "排除符合的行",
+    "ja_JP": "一致する行を除外します"
+  },
+  "Words that belong together": {
+    "zh_CN": "一起出现的词",
+    "zh_TW": "一起出現的詞",
+    "ja_JP": "まとまりのある単語"
+  },
+  "Directory with the map outline files of China. Leave empty to use the plugin's own folder. Files not found there are loaded online.": {
+    "zh_CN": "中国地图轮廓文件所在目录。留空则使用插件自己的目录，目录中没有的文件会在线加载。",
+    "zh_TW": "中國地圖輪廓檔案所在目錄。留空則使用外掛自己的目錄，目錄中沒有的檔案會從線上載入。",
+    "ja_JP": "中国の地図の輪郭ファイルがあるディレクトリです。空欄の場合はプラグイン専用のフォルダを使います。そこにないファイルはオンラインから読み込みます。"
   }
 }

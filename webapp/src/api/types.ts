@@ -121,6 +121,8 @@ export interface AdvancedSearchResponse {
   took: number
   query: string
   summary: SummaryStats
+  /** Parts of the query that were taken as plain text. The pages do not use it. */
+  query_warnings?: { token: string, reason: string }[]
 }
 
 export interface PreflightResponse {

@@ -12,13 +12,15 @@ use tantivy::query::{Query, TermQuery};
 use tantivy::schema::{IndexRecordOption, Term};
 use tokio::sync::Notify;
 
+use crate::analytics::{self, AnalyticsError, DashboardResponse};
 use crate::collectors::TimeRangeCollector;
 use crate::config::{Dirs, Settings};
 use crate::events::{Hub, Processing};
 use crate::filesync::{self, PlanOptions};
 use crate::geo::{Geo, GeoPaths};
 use crate::logs::{HostLogs, LogGroup};
-use crate::pipeline::{self, GroupOutcome, GroupProgress, GroupRun, SharedWriter};
+use crate::pipeline::{self, CommitHook, GroupOutcome, GroupProgress, GroupRun, SharedWriter};
+use crate::rollup::{Delta, GroupRollup, RollupCollector, Rollups, Slot};
 use crate::sizing::{self, Sizing};
 use crate::state::{IndexState, Snapshot};
 use crate::store::{Store, StoreError};
@@ -63,6 +65,8 @@ pub struct RoundReport {
     pub failed: usize,
     pub docs: u64,
     pub duration_ms: u64,
+    /// Number of the round since the process started, counting from one.
+    pub round: u64,
 }
 
 /// One group of a round.
@@ -72,6 +76,8 @@ struct PlannedGroup {
 
 pub struct Engine {
     pub store: Store,
+    /// Hourly figures of the dashboard, a cache of the index.
+    pub rollups: Rollups,
     pub hostlogs: HostLogs,
     pub hub: Arc<Hub>,
     pub processing: Processing,
@@ -89,6 +95,7 @@ pub struct Engine {
     trigger: Notify,
     sizing_override: Mutex<Option<Sizing>>,
     last_report: Mutex<Option<RoundReport>>,
+    rounds: AtomicU64,
 }
 
 fn now_secs() -> i64 {
@@ -102,6 +109,7 @@ impl Engine {
         let hub = Arc::new(Hub::new());
         Ok(Arc::new(Engine {
             store,
+            rollups: Rollups::default(),
             hostlogs: HostLogs::new(),
             processing: Processing::new(hub.clone()),
             hub,
@@ -117,6 +125,7 @@ impl Engine {
             trigger: Notify::new(),
             sizing_override: Mutex::new(None),
             last_report: Mutex::new(None),
+            rounds: AtomicU64::new(0),
         }))
     }
 
@@ -188,14 +197,34 @@ impl Engine {
         self.last_report.lock().expect("report lock").clone()
     }
 
+    /// Makes the index follow the phrase search setting. A change empties the
+    /// index, the round that follows reads every log again.
+    fn apply_layout(&self) {
+        let wanted = self.settings().phrase_search;
+        if self.store.positions() == wanted {
+            return;
+        }
+        match self.store.set_positions(wanted) {
+            Ok(true) => {
+                *self.state.lock().expect("state lock") = IndexState::default();
+                self.rollups.clear();
+                self.generation.fetch_add(1, Ordering::SeqCst);
+                nginxui_plugin_sdk::info!("the phrase search setting changed, the logs are indexed again");
+            }
+            Ok(false) => {}
+            Err(e) => nginxui_plugin_sdk::warn!("cannot change the index layout: {e}"),
+        }
+    }
+
     /// Whether a round is running.
     pub fn round_running(&self) -> bool {
         self.round_active.load(Ordering::SeqCst)
     }
 
-    fn on_commit(&self, state: IndexState) {
+    fn on_commit(&self, state: IndexState, delta: Delta) {
         *self.state.lock().expect("state lock") = state;
-        self.store.reload();
+        // The rollups change together with what the readers see
+        self.rollups.apply(delta, || self.store.reload());
         self.generation.fetch_add(1, Ordering::SeqCst);
     }
 
@@ -228,6 +257,51 @@ impl Engine {
             cache.1.insert(group.to_owned(), found);
         }
         found
+    }
+
+    /// The rollup of a group, computed from the index when it is not kept.
+    /// `None` when the group is too large for a rollup.
+    pub fn rollup_of(&self, group: &str) -> Option<Arc<GroupRollup>> {
+        match self.rollups.get(group) {
+            Some(Slot::Ready(rollup)) => return Some(rollup),
+            Some(Slot::TooLarge) => return None,
+            None => {}
+        }
+        // The version and the searcher of one commit, so a commit that comes
+        // in while the group is scanned keeps the result from being kept
+        let (version, searcher) = self.rollups.snapshot(|| self.store.searcher());
+        let scanned = searcher.search(self.group_query(group).as_ref(), &RollupCollector);
+        match scanned {
+            Ok(rollup) => match self.rollups.install(version, group, rollup) {
+                Slot::Ready(r) => Some(r),
+                Slot::TooLarge => None,
+            },
+            Err(e) => {
+                nginxui_plugin_sdk::warn!("cannot scan {group} for its rollup: {e}");
+                None
+            }
+        }
+    }
+
+    /// The dashboard of a group, or of all groups when `group` is empty. It
+    /// reads the rollups and falls back to the index for a group without one.
+    pub fn dashboard(&self, group: &str, start: i64, end: i64) -> Result<DashboardResponse, AnalyticsError> {
+        let names: Vec<String> = if group.is_empty() {
+            let mut names: Vec<String> = self.state().groups.keys().cloned().collect();
+            names.extend(self.rollups.groups());
+            names.sort();
+            names.dedup();
+            names
+        } else {
+            vec![group.to_owned()]
+        };
+        let rollups: Option<Vec<Arc<GroupRollup>>> = names.iter().map(|g| self.rollup_of(g)).collect();
+        let searcher = self.store.searcher();
+        let fields = self.store.fields();
+        match rollups {
+            Some(rollups) => analytics::dashboard_rollup(&searcher, fields, group, start, end, &rollups),
+            None => analytics::dashboard(&searcher, fields, group, start, end),
+        }
     }
 
     /// Documents in the whole index.
@@ -281,6 +355,7 @@ impl Engine {
         if self.cancelled() {
             return None;
         }
+        self.apply_layout();
         let state = self.state();
         let groups = self.groups_in(&scope);
 
@@ -330,12 +405,14 @@ impl Engine {
             }
         };
         report.duration_ms = started.elapsed().as_millis() as u64;
+        report.round = self.rounds.fetch_add(1, Ordering::SeqCst) + 1;
         *self.last_report.lock().expect("report lock") = Some(report.clone());
         Some(report)
     }
 
     fn round_blocking(self: &Arc<Self>, planned: Vec<PlannedGroup>, scope: &Scope, rebuild: bool) -> RoundReport {
         let sizing = self.sizing();
+        let planned_paths: Vec<String> = planned.iter().map(|p| p.group.path.clone()).collect();
         let mut report = RoundReport { groups: planned.len(), ..Default::default() };
 
         let writer: SharedWriter = match self.store.writer(&sizing) {
@@ -352,7 +429,7 @@ impl Engine {
 
         let committed = self.state();
         let working = Mutex::new(committed.clone());
-        let on_commit = |s: IndexState| self.on_commit(s);
+        let on_commit = |s: IndexState, d: Delta| self.on_commit(s, d);
 
         if rebuild {
             if let Err(e) = self.purge(&writer, &working, scope, &on_commit) {
@@ -406,7 +483,7 @@ impl Engine {
 
         // A failed group may have left documents past its recorded positions, so
         // the next round removes them before it reads again.
-        if let Err(e) = pipeline::commit_state(&writer, &working, report.failed > 0, &on_commit) {
+        if let Err(e) = pipeline::commit_state(&writer, &working, report.failed > 0, &self.rollups, &on_commit) {
             nginxui_plugin_sdk::error!("final commit failed: {e}");
             report.failed += 1;
         }
@@ -421,6 +498,12 @@ impl Engine {
             Err(_) => nginxui_plugin_sdk::warn!("the index writer is still in use"),
         }
         self.store.reload();
+        // Groups whose rollup was dropped are ready before the first request
+        for p in &planned_paths {
+            if self.rollups.get(p).is_none() {
+                self.rollup_of(p);
+            }
+        }
         crate::sys::release_memory();
         report
     }
@@ -454,7 +537,7 @@ impl Engine {
         writer: &SharedWriter,
         working: &Mutex<IndexState>,
         scope: &Scope,
-        on_commit: &(dyn Fn(IndexState) + Sync),
+        on_commit: &CommitHook<'_>,
     ) -> Result<(), String> {
         {
             let w = writer.read().expect("writer lock");
@@ -463,14 +546,16 @@ impl Engine {
                 Scope::All => {
                     w.delete_all_documents().map_err(|e| e.to_string())?;
                     state.groups.clear();
+                    self.rollups.invalidate_all();
                 }
                 Scope::Group(path) => {
                     w.delete_query(self.group_query(path)).map_err(|e| e.to_string())?;
                     state.groups.remove(path);
+                    self.rollups.invalidate(path);
                 }
             }
         }
-        pipeline::commit_state(writer, working, false, on_commit)
+        pipeline::commit_state(writer, working, false, &self.rollups, on_commit)
     }
 
     fn fail_group(&self, group: &str, message: &str, duration_ms: i64) {
@@ -491,9 +576,13 @@ impl Engine {
         geo: Arc<Geo>,
         sizing: Sizing,
         options: PlanOptions,
-        on_commit: &(dyn Fn(IndexState) + Sync),
+        on_commit: &CommitHook<'_>,
     ) -> Result<GroupOutcome, String> {
         let path = group.path.clone();
+        // A group without documents counts them into its rollup as they come
+        self.rollups.begin_group(&path, || {
+            self.store.searcher().search(self.group_query(&path).as_ref(), &Count).map_or(1, |n| n as u64)
+        });
         self.set_phase(&path, Some(Phase::Indexing));
         self.hub.progress(&path, 0.0, "scanning", "running", 0, 0);
 
@@ -550,6 +639,7 @@ impl Engine {
                 progress: &progress,
                 cancel,
                 options,
+                rollups: &self.rollups,
                 on_commit,
             };
             let result = pipeline::run_group(&run);
@@ -569,7 +659,7 @@ impl Engine {
                     state.prune(|p| std::path::Path::new(p).exists());
                 }
                 // The documents are visible before the group is reported as ready
-                if let Err(e) = pipeline::commit_state(writer, working, true, on_commit) {
+                if let Err(e) = pipeline::commit_state(writer, working, true, &self.rollups, on_commit) {
                     self.fail_group(&path, &e, duration_ms);
                     return Err(e);
                 }

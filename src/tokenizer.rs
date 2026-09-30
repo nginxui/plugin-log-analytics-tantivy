@@ -143,7 +143,62 @@ fn is_atom_char(c: char) -> bool {
 }
 
 impl LogTokenizer {
+    /// Splits a text into tokens. Pure ASCII text takes a byte based path that
+    /// gives the same tokens as the general one.
     fn scan(&mut self, s: &str) {
+        if s.is_ascii() {
+            self.scan_ascii(s);
+        } else {
+            self.scan_general(s);
+        }
+    }
+
+    /// The ASCII path: no character decoding, no CJK or emoji.
+    fn scan_ascii(&mut self, s: &str) {
+        let full = self.mode == Mode::Full;
+        let b = s.as_bytes();
+        let mut i = 0;
+        let mut pos = 0;
+        while i < b.len() {
+            let c = b[i];
+            if full
+                && (c.is_ascii_hexdigit() || c == b':')
+                && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_'))
+            {
+                if let Some((end, canon)) = ipv6_at(s, i) {
+                    self.push(&canon, i, end, pos);
+                    pos += 1;
+                    i = end;
+                    continue;
+                }
+            }
+            if c.is_ascii_alphanumeric() {
+                let mut end = i + 1;
+                while end < b.len() && b[end].is_ascii_alphanumeric() {
+                    end += 1;
+                }
+                if full && c.is_ascii_digit() {
+                    if let Some(groups) = number_run(s, i) {
+                        self.push_number(s, i, &groups, pos);
+                        pos += 1;
+                        i = *groups.last().unwrap();
+                        continue;
+                    }
+                }
+                self.push(&s[i..end], i, end, pos);
+                pos += 1;
+                i = end;
+            } else if c == b'.' && (b[i..].starts_with(b"../") || b[i..].starts_with(b"..\\")) {
+                self.push("../", i, i + 3, pos);
+                pos += 1;
+                i += 3;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn scan_general(&mut self, s: &str) {
         let full = self.mode == Mode::Full;
         let b = s.as_bytes();
         let mut i = 0;
@@ -384,6 +439,155 @@ mod tests {
     fn emoji_and_traversal_are_tokens() {
         assert!(terms("hello 😀", false).contains(&"😀".to_owned()));
         assert!(terms("/a/../b", true).contains(&"../".to_owned()));
+    }
+
+    /// Tokens of both scan paths as (text, from, to, position).
+    type Seen = Vec<(String, usize, usize, usize)>;
+
+    fn both_paths(mode: Mode, query: bool, text: &str) -> (Seen, Seen) {
+        let mut t = LogTokenizer::new(mode, query);
+        let grab = |t: &LogTokenizer| {
+            t.tokens[..t.len]
+                .iter()
+                .map(|k| (k.text.clone(), k.offset_from, k.offset_to, k.position))
+                .collect::<Vec<_>>()
+        };
+        t.len = 0;
+        t.scan_ascii(text);
+        let fast = grab(&t);
+        t.len = 0;
+        t.scan_general(text);
+        (fast, grab(&t))
+    }
+
+    /// Small xorshift generator, so the test needs no extra crate.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+    }
+
+    #[test]
+    fn ascii_path_matches_the_general_path_on_random_text() {
+        // Characters that steer the scanner: digits, dots, colons, hex letters, escapes, separators
+        const PIECES: &[&str] = &[
+            "0",
+            "1",
+            "9",
+            "12",
+            "255",
+            ".",
+            ".",
+            "..",
+            "../",
+            "..\\",
+            "_",
+            ":",
+            "::",
+            "a",
+            "f",
+            "e",
+            "x",
+            "z",
+            "Q",
+            "-",
+            "/",
+            " ",
+            "%",
+            "%2",
+            "%20",
+            "%2e",
+            "\\x",
+            "\\x41",
+            "\"",
+            "[",
+            "]",
+            "?",
+            "=",
+            "&",
+            "2001:db8::1",
+            "::1",
+            "192.168.1.10",
+            "126.0.0.0",
+            "10_15_7",
+            "abc",
+            "DEAD",
+            "beef",
+            "1.2.",
+            "1.",
+            ".1",
+            "a1",
+            "1a",
+        ];
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        for _ in 0..300_000 {
+            let n = 1 + (rng.next() % 12) as usize;
+            let mut text = String::new();
+            for _ in 0..n {
+                text.push_str(PIECES[(rng.next() % PIECES.len() as u64) as usize]);
+            }
+            // Mix in plain random ASCII bytes
+            if rng.next().is_multiple_of(4) {
+                for _ in 0..(rng.next() % 6) {
+                    text.push((0x20 + (rng.next() % 95) as u8) as char);
+                }
+            }
+            for (mode, query) in [(Mode::Full, false), (Mode::Full, true), (Mode::Atoms, false), (Mode::Atoms, true)] {
+                let (fast, slow) = both_paths(mode, query, &text);
+                assert_eq!(fast, slow, "input {text:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ascii_path_matches_the_general_path_on_log_lines() {
+        let lines = [
+            r#"39.61.3.207 - - [07/Sep/2026:15:32:29 +0000] "POST /api/v1/health HTTP/1.1" 200 2089 "-" "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36" 0.127 0.094"#,
+            r#"2001:db8::1 - - [07/Sep/2026:15:32:30 +0000] "GET /a/../../etc/passwd?x=1%20union%20select HTTP/2.0" 404 0 "https://example.com/blog/?q=a%2Fb" "curl/8.4" 0.001 -"#,
+            r#"::ffff:10.0.0.1 - - [07/Sep/2026:15:32:31 +0000] "GET /\x22x\x22 HTTP/1.1" 400 12 "-" "-" 0.000 -"#,
+        ];
+        // The real dataset adds volume when it is there
+        let mut all: Vec<String> = lines.iter().map(|l| (*l).to_owned()).collect();
+        if let Ok(text) = std::fs::read_to_string("/Volumes/Working/Git/.tmp-635799/perf/data/access.log.1") {
+            all.extend(text.lines().step_by(7).take(20_000).map(str::to_owned));
+        }
+        for line in all.iter().filter(|l| l.is_ascii()) {
+            for (mode, query) in [(Mode::Full, false), (Mode::Atoms, false), (Mode::Full, true)] {
+                let (fast, slow) = both_paths(mode, query, line);
+                assert_eq!(fast, slow, "input {line:?}");
+            }
+        }
+    }
+
+    /// Prints the time of both paths over the dataset lines, run on request.
+    #[test]
+    #[ignore = "measurement, run with --release -- --ignored --nocapture"]
+    fn ascii_path_speed() {
+        let text = std::fs::read_to_string("/Volumes/Working/Git/.tmp-635799/perf/data/access.log").unwrap();
+        let lines: Vec<&str> = text.lines().take(300_000).collect();
+        for mode in [Mode::Full, Mode::Atoms] {
+            let mut t = LogTokenizer::new(mode, false);
+            let started = std::time::Instant::now();
+            let mut n = 0;
+            for l in &lines {
+                t.len = 0;
+                t.scan_general(l);
+                n += t.len;
+            }
+            let slow = started.elapsed();
+            let started = std::time::Instant::now();
+            for l in &lines {
+                t.len = 0;
+                t.scan_ascii(l);
+                n += t.len;
+            }
+            eprintln!("{} lines, {n} tokens: general {slow:?}, ascii {:?}", lines.len(), started.elapsed());
+        }
     }
 
     #[test]

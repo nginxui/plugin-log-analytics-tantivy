@@ -128,6 +128,13 @@ pub fn build(shared: HashMap<String, String>) -> Manifest {
                     json!(0),
                 ),
                 setting(
+                    "phrase_search",
+                    "bool",
+                    "Match quoted phrases in order",
+                    "Lets a quoted text in the search box match only when its words appear in that order. This makes the index larger and indexing slower, and changing it reads all logs again. Without it a quoted text matches lines that contain all of its words.",
+                    json!(false),
+                ),
+                setting(
                     "index_custom_mmdb",
                     "text",
                     "Custom IP location database",

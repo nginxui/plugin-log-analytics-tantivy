@@ -14,7 +14,7 @@ path = "src/main.rs"
 [dependencies]
 nginxui-plugin-sdk = { path = "../plugin-sdk-rust" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "signal"] }
-tantivy = "0.26.2"
+tantivy = { version = "0.26.2", features = ["zstd-compression"] }
 maxminddb = { version = "0.32.0", features = ["mmap"] }
 regex = "1"
 flate2 = "1"

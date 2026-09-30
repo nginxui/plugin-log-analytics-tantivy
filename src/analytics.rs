@@ -1,14 +1,18 @@
 //! The figures of the dashboard, the maps and the entry statistics.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde::Serialize;
+use tantivy::query::{BooleanQuery, Query};
 use tantivy::Searcher;
 
 use crate::collectors::{
-    top_terms, CityLabels, Dashboard, DashboardCollector, Layout, NumCounts, StatsCollector, TermCounts,
+    top_terms, CityLabels, Dashboard, DashboardCollector, Layout, MinuteCollector, NumCounts, StatsCollector,
+    TermCounts,
 };
 use crate::query::{self, Filter};
+use crate::rollup::{term_hash, GroupRollup, IdMap, IdSet};
 use crate::schema::Fields;
 
 /// Browsers, systems and device types on the dashboard.
@@ -122,8 +126,40 @@ fn percent(count: u64, total: u64) -> f64 {
     count as f64 / total as f64 * 100.0
 }
 
-/// Assembles the dashboard response from a scan.
-pub fn dashboard_response(layout: &Layout, scan: &Dashboard) -> DashboardResponse {
+/// The figures a dashboard response is made of, however they were gathered.
+#[derive(Default)]
+pub struct Figures {
+    pub window_pv: u64,
+    pub window_bytes: u64,
+    pub window_uv: usize,
+    pub peak_minute: u32,
+    pub hourly_pv: Vec<u64>,
+    pub hourly_uv: Vec<usize>,
+    pub daily_pv: Vec<u64>,
+    pub daily_uv: Vec<usize>,
+    /// Top browsers, systems, device types and paths, busiest first.
+    pub top: [Vec<(String, u64)>; 4],
+}
+
+impl From<Dashboard> for Figures {
+    fn from(scan: Dashboard) -> Self {
+        let limits = [TOP_GROUP, TOP_GROUP, TOP_GROUP, TOP_URLS];
+        Figures {
+            window_pv: scan.window_pv,
+            window_bytes: scan.window_bytes,
+            window_uv: scan.window_ips.len(),
+            peak_minute: scan.peak_minute(),
+            hourly_pv: scan.hourly_pv,
+            hourly_uv: scan.hourly_ips.iter().map(|s| s.len()).collect(),
+            daily_pv: scan.daily_pv,
+            daily_uv: scan.daily_ips.iter().map(|s| s.len()).collect(),
+            top: std::array::from_fn(|i| top_terms(&scan.groups[i], limits[i])),
+        }
+    }
+}
+
+/// Assembles the dashboard response from the figures of a scan.
+pub fn dashboard_response(layout: &Layout, scan: &Figures) -> DashboardResponse {
     let total_pv = scan.window_pv;
     let mut response = DashboardResponse {
         hourly_stats: Vec::new(),
@@ -141,7 +177,7 @@ pub fn dashboard_response(layout: &Layout, scan: &Dashboard) -> DashboardRespons
                 let stamp = layout.hour_start + i as i64 * 3600;
                 HourlyStats {
                     hour: stamp.rem_euclid(86400) / 3600,
-                    uv: scan.hourly_ips[i].len(),
+                    uv: scan.hourly_uv[i],
                     pv: scan.hourly_pv[i],
                     timestamp: stamp,
                 }
@@ -153,32 +189,41 @@ pub fn dashboard_response(layout: &Layout, scan: &Dashboard) -> DashboardRespons
             .enumerate()
             .map(|(i, (date, stamp))| DailyStats {
                 date: date.clone(),
-                uv: scan.daily_ips[i].len(),
+                uv: scan.daily_uv[i],
                 pv: scan.daily_pv[i],
                 timestamp: *stamp,
             })
             .collect();
         response.daily_stats.sort_by_key(|d| d.timestamp);
-        response.browsers = top_terms(&scan.groups[0], TOP_GROUP)
-            .into_iter()
-            .map(|(browser, count)| BrowserStats { percent: percent(count, total_pv), browser, count })
+        let [browsers, systems, devices, urls] = &scan.top;
+        response.browsers = browsers
+            .iter()
+            .map(|(browser, count)| BrowserStats {
+                percent: percent(*count, total_pv),
+                browser: browser.clone(),
+                count: *count,
+            })
             .collect();
-        response.operating_systems = top_terms(&scan.groups[1], TOP_GROUP)
-            .into_iter()
-            .map(|(os, count)| OsStats { percent: percent(count, total_pv), os, count })
+        response.operating_systems = systems
+            .iter()
+            .map(|(os, count)| OsStats { percent: percent(*count, total_pv), os: os.clone(), count: *count })
             .collect();
-        response.devices = top_terms(&scan.groups[2], TOP_GROUP)
-            .into_iter()
-            .map(|(device, count)| DeviceStats { percent: percent(count, total_pv), device, count })
+        response.devices = devices
+            .iter()
+            .map(|(device, count)| DeviceStats {
+                percent: percent(*count, total_pv),
+                device: device.clone(),
+                count: *count,
+            })
             .collect();
-        response.top_urls = top_terms(&scan.groups[3], TOP_URLS)
-            .into_iter()
-            .map(|(url, visits)| UrlStats { percent: percent(visits, total_pv), url, visits })
+        response.top_urls = urls
+            .iter()
+            .map(|(url, visits)| UrlStats { percent: percent(*visits, total_pv), url: url.clone(), visits: *visits })
             .collect();
     }
 
     let days = response.daily_stats.len();
-    let total_uv = scan.window_ips.len();
+    let total_uv = scan.window_uv;
     let (mut peak_hour, mut peak_hour_traffic) = (0, 0u64);
     for h in &response.hourly_stats {
         if h.pv > peak_hour_traffic {
@@ -200,7 +245,7 @@ pub fn dashboard_response(layout: &Layout, scan: &Dashboard) -> DashboardRespons
         peak_hour,
         peak_hour_traffic,
         avg_qps: if range > 0 { total_pv as f64 / range as f64 } else { 0.0 },
-        peak_qps: f64::from(scan.peak_minute()) / 60.0,
+        peak_qps: f64::from(scan.peak_minute) / 60.0,
     };
     response
 }
@@ -224,7 +269,200 @@ pub fn dashboard(
     };
     let q = query::build(fields, &filter);
     let scan = searcher.search(q.as_ref(), &DashboardCollector { layout: layout.clone() })?;
-    Ok(dashboard_response(&layout, &scan))
+    Ok(dashboard_response(&layout, &Figures::from(scan)))
+}
+
+/// Whole hours come from the rollups of the groups, the hours that a boundary
+/// cuts come from the index. The figures equal those of [`dashboard`].
+///
+/// A boundary is the start or end of the window, of the scanned range or of a
+/// local day. An hour is whole when it lies in the scanned range and no
+/// boundary falls inside it. The minutes of the peak come from the rollups
+/// when the window starts on a whole minute, otherwise from one pass over the
+/// timestamps of the window.
+pub fn dashboard_rollup(
+    searcher: &Searcher,
+    fields: &Fields,
+    group: &str,
+    start: i64,
+    end: i64,
+    rollups: &[Arc<GroupRollup>],
+) -> Result<DashboardResponse, AnalyticsError> {
+    validate_range(start, end)?;
+    if start <= 0 || end <= start {
+        return dashboard(searcher, fields, group, start, end);
+    }
+    let layout = Layout::new(start, end);
+    let (lo, hi) = layout.scan_range();
+    let aligned = start % 60 == 0;
+
+    let mut cuts: Vec<i64> = vec![start, end, lo, hi];
+    for (day_lo, day_hi) in &layout.days {
+        cuts.push(*day_lo);
+        cuts.push(*day_hi);
+    }
+    cuts.sort_unstable();
+    cuts.dedup();
+    let is_whole = |h: i64| {
+        let next = cuts.partition_point(|c| *c <= h);
+        h >= lo && h + 3600 <= hi && cuts.get(next).is_none_or(|c| *c >= h + 3600)
+    };
+
+    let mut whole: Vec<i64> = Vec::new();
+    let mut edges: Vec<Box<dyn Query>> = Vec::new();
+    let mut hour = crate::rollup::hour_of(lo);
+    while hour < hi {
+        if is_whole(hour) {
+            whole.push(hour);
+        } else if let Some(range) = query::time_range(fields, Some(hour.max(lo)), Some((hour + 3600).min(hi))) {
+            edges.push(range);
+        }
+        hour += 3600;
+    }
+
+    let group_filter =
+        Filter { groups: if group.is_empty() { Vec::new() } else { vec![group.to_owned()] }, ..Default::default() };
+    let edge = if edges.is_empty() {
+        Dashboard::default()
+    } else {
+        let q =
+            BooleanQuery::intersection(vec![query::build(fields, &group_filter), Box::new(BooleanQuery::union(edges))]);
+        searcher.search(&q, &DashboardCollector { layout: layout.clone() })?
+    };
+
+    let mut minutes = vec![0u32; layout.minute_count];
+    let mut window_ips = IdSet::default();
+    let mut window_pv = 0u64;
+    let mut window_bytes = 0u64;
+    let mut hourly_pv = vec![0u64; layout.hour_count];
+    let mut hourly_sources: Vec<Vec<&[u64]>> = vec![Vec::new(); layout.hour_count];
+    let mut daily_pv = vec![0u64; layout.days.len()];
+    let mut daily_ips: Vec<IdSet> = vec![IdSet::default(); layout.days.len()];
+    let mut counts: [IdMap<u64>; 4] = Default::default();
+    let mut edge_names: [IdMap<&str>; 4] = Default::default();
+
+    let day_of = |ts: i64| {
+        let i = layout.days.partition_point(|d| d.0 <= ts).checked_sub(1)?;
+        (ts < layout.days[i].1).then_some(i)
+    };
+    for &h in &whole {
+        let in_window = h >= start && h + 3600 <= end;
+        let bucket = h - layout.hour_start;
+        let bucket = (bucket >= 0 && bucket / 3600 < layout.hour_count as i64).then_some((bucket / 3600) as usize);
+        let day = day_of(h);
+        for r in rollups {
+            let Some(agg) = r.hours.get(&h) else { continue };
+            if let Some(b) = bucket {
+                hourly_pv[b] += agg.pv;
+                hourly_sources[b].push(&agg.ips);
+            }
+            if let Some(d) = day {
+                daily_pv[d] += agg.pv;
+                daily_ips[d].extend(agg.ips.iter().copied());
+            }
+            if in_window {
+                window_pv += agg.pv;
+                window_bytes += agg.bytes;
+                window_ips.extend(agg.ips.iter().copied());
+                if aligned {
+                    let base = ((h - start) / 60) as usize;
+                    for (m, c) in agg.minutes.iter().enumerate() {
+                        minutes[base + m] += *c;
+                    }
+                }
+                for (kind, terms) in agg.terms.iter().enumerate() {
+                    for (hash, c) in terms {
+                        *counts[kind].entry(*hash).or_insert(0) += u64::from(*c);
+                    }
+                }
+            }
+        }
+    }
+
+    // The hours the boundaries cut
+    window_pv += edge.window_pv;
+    window_bytes += edge.window_bytes;
+    window_ips.extend(edge.window_ips.iter().copied());
+    for (a, b) in hourly_pv.iter_mut().zip(&edge.hourly_pv) {
+        *a += *b;
+    }
+    for (a, b) in daily_pv.iter_mut().zip(&edge.daily_pv) {
+        *a += *b;
+    }
+    for (a, b) in daily_ips.iter_mut().zip(&edge.daily_ips) {
+        a.extend(b.iter().copied());
+    }
+    for (kind, terms) in edge.groups.iter().enumerate() {
+        for (name, c) in terms {
+            let hash = term_hash(name.as_bytes());
+            *counts[kind].entry(hash).or_insert(0) += *c;
+            edge_names[kind].insert(hash, name.as_str());
+        }
+    }
+    if aligned {
+        for (a, b) in minutes.iter_mut().zip(&edge.minutes) {
+            *a += *b;
+        }
+    } else {
+        let q = query::build(fields, &range_filter(group, start, end));
+        minutes = searcher.search(q.as_ref(), &MinuteCollector { start, count: layout.minute_count })?;
+    }
+
+    let hourly_uv: Vec<usize> = hourly_sources
+        .iter()
+        .enumerate()
+        .map(|(i, sources)| match (sources.as_slice(), edge.hourly_ips.get(i).filter(|s| !s.is_empty())) {
+            ([], None) => 0,
+            ([one], None) => one.len(),
+            ([], Some(set)) => set.len(),
+            (many, extra) => {
+                let mut set = IdSet::default();
+                for s in many {
+                    set.extend(s.iter().copied());
+                }
+                if let Some(extra) = extra {
+                    set.extend(extra.iter().copied());
+                }
+                set.len()
+            }
+        })
+        .collect();
+
+    let limits = [TOP_GROUP, TOP_GROUP, TOP_GROUP, TOP_URLS];
+    let top: [Vec<(String, u64)>; 4] = std::array::from_fn(|kind| {
+        top_of(&counts[kind], limits[kind], |hash| {
+            edge_names[kind]
+                .get(&hash)
+                .map(|n| (*n).to_owned())
+                .or_else(|| rollups.iter().find_map(|r| r.name(kind, hash).map(str::to_owned)))
+        })
+    });
+
+    let figures = Figures {
+        window_pv,
+        window_bytes,
+        window_uv: window_ips.len(),
+        peak_minute: minutes.iter().copied().max().unwrap_or(0),
+        hourly_pv,
+        hourly_uv,
+        daily_pv,
+        daily_uv: daily_ips.iter().map(IdSet::len).collect(),
+        top,
+    };
+    Ok(dashboard_response(&layout, &figures))
+}
+
+/// The `n` busiest terms of hash counts, by count and then by text, like
+/// [`top_terms`]. Names are looked up only for the terms that can make it.
+fn top_of(counts: &IdMap<u64>, n: usize, name: impl Fn(u64) -> Option<String>) -> Vec<(String, u64)> {
+    let mut all: Vec<(u64, u64)> = counts.iter().map(|(h, c)| (*h, *c)).collect();
+    all.sort_unstable_by_key(|e| std::cmp::Reverse(e.1));
+    let cut = if all.len() > n && n > 0 { all[n - 1].1 } else { 0 };
+    let mut named: Vec<(String, u64)> =
+        all.into_iter().take_while(|(_, c)| *c >= cut).filter_map(|(h, c)| name(h).map(|t| (t, c))).collect();
+    named.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    named.truncate(n);
+    named
 }
 
 // ------------------------------------------------------------------- geo
@@ -430,7 +668,7 @@ mod tests {
     #[test]
     fn an_empty_scan_gives_empty_lists_and_zero_figures() {
         let layout = Layout::new(1_000_000, 1_086_400);
-        let scan = Dashboard::default();
+        let scan = Figures::from(Dashboard::default());
         let r = dashboard_response(&layout, &scan);
         assert!(r.hourly_stats.is_empty() && r.daily_stats.is_empty() && r.top_urls.is_empty());
         assert_eq!(r.summary, DashboardSummary::default());

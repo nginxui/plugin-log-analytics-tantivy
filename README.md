@@ -32,6 +32,7 @@ still shows countries.
 | `incremental_index_interval` | number | 15 | Minutes between two checks of the logs for new lines. Zero or empty means 15. |
 | `max_concurrent_index_tasks` | number | 0 | The most log files indexed at the same time. Zero takes one for a small memory budget and at most two otherwise. |
 | `index_custom_mmdb` | text | empty | Path of your own IP location database. A relative path is looked up in the `geolite` folder of the plugin data directory. The downloaded database wins when both exist. |
+| `phrase_search` | bool | off | Indexes word positions of the log line so a quoted text in the search box matches in order. It makes the index about 20 percent larger and indexing slower, and changing it reads all logs again. Off, a quoted text matches lines that contain all its words. |
 | `geo_map_path` | text | empty | Folder with the map boundary files (`100000_full.json` and the province files). A relative path is looked up in the plugin data directory, empty means its `maps` folder. A file that is not there is fetched by the page from a public map source. |
 
 ## Search
@@ -45,6 +46,23 @@ matches its decoded form (`%E4%B8%AD` and `中`, `union%20select` and
 pair of characters, and IPv6 addresses match in every spelling.
 
 The path, user agent and referer filters match their words in order.
+
+Filters go into the same box and combine with AND: `status:404`, `status:5xx`,
+`status:400-499`, `method:POST`, `ip:192.168.0.0/16`, `ip:2001:db8::/32`,
+`path:/api/`, `ua:curl`, `referer:google`, `browser:`, `os:`, `device:`,
+`country:`, `region:`, `city:`, `bytes:>1000`, `rt:>0.5` and `a..b` ranges. A
+leading `-` excludes (`-bot`, `-status:404`) and quotes make a phrase. Anything
+that does not parse stays plain text, and the response lists such parts in
+`query_warnings`.
+
+## Dashboard rollups
+
+The dashboard reads per hour figures (views, bytes, visitors, top lists) that
+indexing keeps up to date, and the index only for the hours a window edge or a
+day boundary cuts. The rollups are a cache of the index: a rewritten file or a
+rebuild drops the rollup of its group, which is computed again from the index,
+and after a restart the first request does that once. A group whose rollup
+would pass 64 MB is served from the index.
 
 ## How the logs are read
 

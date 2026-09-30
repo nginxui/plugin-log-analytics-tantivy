@@ -11,6 +11,7 @@ use super::resolve_group;
 use super::respond::{self, ok, ApiError, Resp};
 use crate::analytics;
 use crate::app::App;
+use crate::qsyntax;
 use crate::query::Filter;
 use crate::search::{self, EntryLoader, SearchParams};
 
@@ -111,8 +112,10 @@ pub async fn search(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiE
             "" => ("timestamp".to_owned(), true),
             other => (other.to_owned(), request.sort_order != "asc"),
         };
+        let mut filter = filter_of(&request, &group, now());
+        filter.raw_phrases = app.engine.store.positions();
         let params = SearchParams {
-            filter: filter_of(&request, &group, now()),
+            filter,
             // A negative limit asks for the figures without hits
             limit: if request.limit < 0 { 1 } else { request.limit as usize },
             offset: request.offset.max(0) as usize,
@@ -132,13 +135,20 @@ pub async fn search(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiE
             "avg_traffic_per_pv": if docs > 0 { out.summary.bytes as f64 / docs as f64 } else { 0.0 },
             "traffic_approximate": false,
         });
-        Ok(ok(&json!({
+        let mut body = json!({
             "entries": entries,
             "total": docs,
             "took": started.elapsed().as_millis() as i64,
             "query": request.query,
             "summary": summary,
-        })))
+        });
+        // Parts of the search box that were taken as plain text. The pages
+        // ignore the list, it is there for other callers.
+        let warnings = qsyntax::parse(&request.query).warnings;
+        if !warnings.is_empty() {
+            body["query_warnings"] = json!(warnings);
+        }
+        Ok(ok(&body))
     })
     .await
     .map_err(ApiError::internal)?

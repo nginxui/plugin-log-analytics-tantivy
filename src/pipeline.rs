@@ -23,6 +23,7 @@ use tantivy::{IndexWriter, TantivyDocument};
 use crate::filesync::{self, FilePlan, LineReader, PlanOptions, DOC_FINGERPRINT_LEN};
 use crate::geo::{Geo, GeoCache};
 use crate::parse::{self, TimeCache};
+use crate::rollup::{Delta, RollupBuilder, Rollups};
 use crate::schema::Fields;
 use crate::sizing::Sizing;
 use crate::state::{FileRow, IndexState, Snapshot};
@@ -78,9 +79,15 @@ pub struct GroupRun<'a> {
     pub progress: &'a GroupProgress,
     pub cancel: &'a AtomicBool,
     pub options: PlanOptions,
-    /// Called with the state that was just committed.
-    pub on_commit: &'a (dyn Fn(IndexState) + Sync),
+    /// The hourly rollups, which follow the documents that are added.
+    pub rollups: &'a Rollups,
+    /// Called with the state that was just committed and the changes of the
+    /// rollups that belong to it.
+    pub on_commit: &'a CommitHook<'a>,
 }
+
+/// What the owner of the index does after a commit.
+pub type CommitHook<'a> = dyn Fn(IndexState, Delta) + Sync + 'a;
 
 struct Batch {
     seq: u64,
@@ -180,6 +187,9 @@ pub fn build_doc(
     let mut d = TantivyDocument::default();
     d.add_i64(f.ts, entry.ts);
     d.add_text(f.ip, entry.ip);
+    if let Some(addr) = crate::qsyntax::ip_to_v6(entry.ip) {
+        d.add_ip_addr(f.ip_addr, addr);
+    }
     d.add_u64(f.status, entry.status);
     d.add_u64(f.bytes_sent, entry.bytes_sent);
     d.add_text(f.raw, raw);
@@ -237,7 +247,8 @@ pub fn commit_state(
     writer: &SharedWriter,
     state: &Mutex<IndexState>,
     dirty: bool,
-    on_commit: &(dyn Fn(IndexState) + Sync),
+    rollups: &Rollups,
+    on_commit: &CommitHook<'_>,
 ) -> Result<(), String> {
     let mut w = writer.write().expect("writer lock");
     let snapshot = {
@@ -245,11 +256,20 @@ pub fn commit_state(
         s.dirty = dirty;
         s.clone()
     };
-    let mut prepared = w.prepare_commit().map_err(|e| e.to_string())?;
-    prepared.set_payload(&snapshot.to_payload());
-    prepared.commit().map_err(|e| e.to_string())?;
+    // No batch is half added while the writer is locked, so the pending
+    // rollup changes are exactly those of the documents this commit saves
+    let delta = rollups.take_pending();
+    let committed = (|| {
+        let mut prepared = w.prepare_commit().map_err(|e| e.to_string())?;
+        prepared.set_payload(&snapshot.to_payload());
+        prepared.commit().map_err(|e| e.to_string())
+    })();
+    if let Err(e) = committed {
+        rollups.restore(delta);
+        return Err(e);
+    }
     drop(w);
-    on_commit(snapshot);
+    on_commit(snapshot, delta);
     Ok(())
 }
 
@@ -299,6 +319,7 @@ pub fn run_group(run: &GroupRun<'_>) -> Result<GroupOutcome, String> {
                         let w = run.writer.read().expect("writer lock");
                         let now = now_secs();
                         let (mut added, mut bad) = (0u64, 0u64);
+                        let mut rollup = RollupBuilder::default();
                         for (line, offset) in &batch.lines {
                             let Some(entry) =
                                 parse::parse_line(line, &mut times).filter(|e| parse::is_valid(e, line, now))
@@ -320,9 +341,21 @@ pub fn run_group(run: &GroupRun<'_>) -> Result<GroupOutcome, String> {
                                 failed(format!("add document: {e}"));
                                 break;
                             }
+                            let info = ua.info(entry.user_agent);
+                            rollup.add(
+                                entry.ts,
+                                entry.bytes_sent,
+                                entry.status,
+                                entry.ip.as_bytes(),
+                                [info.browser, info.os, info.device, entry.path],
+                            );
                             run.progress.min_ts.fetch_min(entry.ts, Ordering::Relaxed);
                             run.progress.max_ts.fetch_max(entry.ts, Ordering::Relaxed);
                             added += 1;
+                        }
+                        // Still under the writer lock, like the documents
+                        if !rollup.is_empty() {
+                            run.rollups.add(run.group, rollup.finish());
                         }
                         run.progress.docs.fetch_add(added, Ordering::Relaxed);
                         run.progress.failed.fetch_add(bad, Ordering::Relaxed);
@@ -342,7 +375,7 @@ pub fn run_group(run: &GroupRun<'_>) -> Result<GroupOutcome, String> {
                 parsers_done.store(true, Ordering::Relaxed);
             }
             if run.sizing.commit_every > 0 && committed_docs.load(Ordering::Relaxed) >= next {
-                if let Err(e) = commit_state(run.writer, run.working, true, run.on_commit) {
+                if let Err(e) = commit_state(run.writer, run.working, true, run.rollups, run.on_commit) {
                     failed(format!("commit: {e}"));
                 }
                 next = committed_docs.load(Ordering::Relaxed) + run.sizing.commit_every;
@@ -442,6 +475,8 @@ fn read_file(ctx: &ReaderCtx<'_>, index: usize, path: &Path, seq: &mut u64) -> R
         watermark.drain();
         let query = content_query(run.fields, run.group, &fingerprint, from);
         run.writer.read().expect("writer lock").delete_query(query).map_err(|e| e.to_string())?;
+        // What was deleted cannot be taken out of the hours
+        run.rollups.invalidate(run.group);
     }
 
     let stream = filesync::open_content(path, plan.size, plan.compressed, plan.start).map_err(|e| e.to_string())?;

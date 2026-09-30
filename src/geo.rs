@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use maxminddb::{Mmap, Reader};
 use serde::Deserialize;
@@ -78,22 +78,28 @@ fn is_chinese_region(code: &str) -> bool {
     matches!(code, "CN" | "HK" | "MO" | "TW")
 }
 
-/// Decompressed country database, shared by the whole process.
-fn country_reader() -> Option<&'static Reader<Vec<u8>>> {
-    static READER: OnceLock<Option<Reader<Vec<u8>>>> = OnceLock::new();
-    READER
-        .get_or_init(|| {
-            let mut raw = Vec::with_capacity(12 << 20);
-            xz2::read::XzDecoder::new(COUNTRY_XZ).read_to_end(&mut raw).ok()?;
-            Reader::from_source(raw).ok()
-        })
-        .as_ref()
+static COUNTRY: Mutex<Weak<Reader<Vec<u8>>>> = Mutex::new(Weak::new());
+
+/// Whether the decompressed country database is in memory.
+pub fn country_database_loaded() -> bool {
+    COUNTRY.lock().expect("country database lock").strong_count() > 0
 }
 
-/// ISO code of the country of an address. Empty when the database does not
-/// place it.
-pub fn country_code(ip: IpAddr) -> String {
-    let Some(reader) = country_reader() else { return String::new() };
+/// The decompressed country database, kept only while someone uses it. It
+/// takes about 12 MB, so an idle process should not hold it.
+fn country_reader() -> Option<Arc<Reader<Vec<u8>>>> {
+    let mut slot = COUNTRY.lock().expect("country database lock");
+    if let Some(reader) = slot.upgrade() {
+        return Some(reader);
+    }
+    let mut raw = Vec::with_capacity(12 << 20);
+    xz2::read::XzDecoder::new(COUNTRY_XZ).read_to_end(&mut raw).ok()?;
+    let reader = Arc::new(Reader::from_source(raw).ok()?);
+    *slot = Arc::downgrade(&reader);
+    Some(reader)
+}
+
+fn country_of(reader: &Reader<Vec<u8>>, ip: IpAddr) -> String {
     let Ok(result) = reader.lookup(ip) else { return String::new() };
     match result.decode::<CountryRecord>() {
         Ok(Some(rec)) => rec.country.iso_code.unwrap_or_default(),
@@ -101,10 +107,18 @@ pub fn country_code(ip: IpAddr) -> String {
     }
 }
 
+/// ISO code of the country of an address. Empty when the database does not
+/// place it.
+pub fn country_code(ip: IpAddr) -> String {
+    country_reader().map(|r| country_of(&r, ip)).unwrap_or_default()
+}
+
 /// Locations of the addresses of the logs. One instance serves one indexing
-/// round, then it is dropped so the mapped city database is released.
+/// round, then it is dropped so the country database and the mapped city
+/// database are released. Neither is read before the first address is placed.
 pub struct Geo {
     city: Option<Reader<Mmap>>,
+    country: OnceLock<Option<Arc<Reader<Vec<u8>>>>>,
 }
 
 impl Geo {
@@ -115,12 +129,12 @@ impl Geo {
             // never written in place, so the mapping stays valid.
             unsafe { Reader::open_mmap(p) }.ok()
         });
-        Arc::new(Geo { city })
+        Arc::new(Geo { city, country: OnceLock::new() })
     }
 
     /// A geo that only knows countries.
     pub fn countries_only() -> Arc<Geo> {
-        Arc::new(Geo { city: None })
+        Arc::new(Geo { city: None, country: OnceLock::new() })
     }
 
     pub fn has_city_database(&self) -> bool {
@@ -130,7 +144,8 @@ impl Geo {
     /// Places an address. `None` for text that is not an address.
     pub fn locate(&self, ip: &str) -> Option<GeoLocation> {
         let addr: IpAddr = ip.parse().ok()?;
-        let mut loc = GeoLocation { region_code: country_code(addr), ..Default::default() };
+        let country = self.country.get_or_init(country_reader).as_deref().map(|r| country_of(r, addr));
+        let mut loc = GeoLocation { region_code: country.unwrap_or_default(), ..Default::default() };
         let Some(reader) = &self.city else {
             return (!loc.region_code.is_empty()).then_some(loc);
         };

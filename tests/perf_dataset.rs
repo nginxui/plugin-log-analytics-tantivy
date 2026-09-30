@@ -84,16 +84,50 @@ async fn dashboard_and_search_match_the_validated_figures() {
     let searcher = engine.store.searcher();
     let fields = engine.store.fields();
 
-    let t = Instant::now();
-    let d30 = analytics::dashboard(&searcher, fields, &group, day_start(first), day_start(last) + 86399).unwrap();
-    eprintln!("dashboard 30 days: {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
-    assert_eq!((d30.summary.total_pv, d30.summary.total_uv), (1_400_000, 59_983));
+    // Each window, read from the index and from the rollups
+    let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+    let (w30_start, w30_end) = (day_start(first), day_start(last) + 86399);
+    let (w7_start, w7_end) = (day_start(last - 7 * 86400), day_start(last) + 86399);
+    let unaligned_end = last;
+    let windows = [("30 days", w30_start, w30_end, 1_400_000, 59_983), ("7 days", w7_start, w7_end, 326_923, 54_091)];
+    for (name, start, end, pv, uv) in windows {
+        let t = Instant::now();
+        let direct = analytics::dashboard(&searcher, fields, &group, start, end).unwrap();
+        eprintln!("dashboard {name} index first: {:.0} ms", ms(t));
+        let t = Instant::now();
+        analytics::dashboard(&searcher, fields, &group, start, end).unwrap();
+        eprintln!("dashboard {name} index warm: {:.0} ms", ms(t));
+        assert_eq!((direct.summary.total_pv, direct.summary.total_uv), (pv, uv));
 
+        let t = Instant::now();
+        let rolled = engine.dashboard(&group, start, end).unwrap();
+        eprintln!("dashboard {name} rollup first: {:.0} ms", ms(t));
+        let t = Instant::now();
+        engine.dashboard(&group, start, end).unwrap();
+        eprintln!("dashboard {name} rollup warm: {:.0} ms", ms(t));
+        assert!(rolled == direct, "the rollup figures of {name} differ");
+    }
+    // A window that does not start on a whole minute, the default of the page
     let t = Instant::now();
-    let d7 =
-        analytics::dashboard(&searcher, fields, &group, day_start(last - 7 * 86400), day_start(last) + 86399).unwrap();
-    eprintln!("dashboard 7 days: {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
-    assert_eq!((d7.summary.total_pv, d7.summary.total_uv), (326_923, 54_091));
+    let direct =
+        analytics::dashboard(&searcher, fields, &group, unaligned_end - 30 * 86400 + 17, unaligned_end).unwrap();
+    eprintln!("dashboard unaligned index: {:.0} ms", ms(t));
+    let t = Instant::now();
+    let rolled = engine.dashboard(&group, unaligned_end - 30 * 86400 + 17, unaligned_end).unwrap();
+    eprintln!("dashboard unaligned rollup: {:.0} ms", ms(t));
+    assert!(rolled == direct);
+    // After a restart the first request scans the group once
+    engine.rollups.clear();
+    let t = Instant::now();
+    let rolled = engine.dashboard(&group, w7_start, w7_end).unwrap();
+    eprintln!("dashboard 7 days rollup after restart, first: {:.0} ms", ms(t));
+    assert_eq!((rolled.summary.total_pv, rolled.summary.total_uv), (326_923, 54_091));
+    let t = Instant::now();
+    engine.dashboard(&group, w7_start, w7_end).unwrap();
+    eprintln!("dashboard 7 days rollup after restart, warm: {:.0} ms", ms(t));
+    if let Some(plugin_log_analytics_rs::rollup::Slot::Ready(r)) = engine.rollups.get(&group) {
+        eprintln!("rollup: {} hours, about {} MB", r.hours.len(), r.bytes_used() >> 20);
+    }
     assert_eq!(day(day_start(first)).len(), 10);
 
     let t = Instant::now();
@@ -108,4 +142,14 @@ async fn dashboard_and_search_match_the_validated_figures() {
     eprintln!("search 30 days: {:.0} ms", t.elapsed().as_secs_f64() * 1000.0);
     assert_eq!(out.summary.docs, 1_399_999);
     assert_eq!(out.hits.len(), 50);
+
+    // Loading the stored lines of many hits reads the doc store
+    let big = SearchParams { limit: 3000, offset: 20_000, ..params.clone() };
+    let out = search::search(&searcher, fields, &big).unwrap();
+    let t = Instant::now();
+    let mut loader = search::EntryLoader::new(&searcher, fields);
+    for hit in &out.hits {
+        loader.load(*hit).unwrap();
+    }
+    eprintln!("load {} entries: {:.0} ms", out.hits.len(), ms(t));
 }

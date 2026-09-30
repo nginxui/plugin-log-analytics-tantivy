@@ -6,7 +6,6 @@
 //! which merge across segments, so the count is exact up to hash collisions.
 
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 
 use tantivy::collector::{Collector, SegmentCollector};
 use tantivy::columnar::{Column, StrColumn};
@@ -50,9 +49,7 @@ impl Bits {
 }
 
 fn hash_bytes(b: &[u8]) -> u64 {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    b.hash(&mut h);
-    h.finish()
+    crate::rollup::term_hash(b)
 }
 
 /// Maps the ordinals of one segment to term hashes in one dictionary pass.
@@ -758,5 +755,59 @@ impl SegmentCollector for DashboardSegment {
             }
         }
         self.out
+    }
+}
+
+// ---------------------------------------------------------------- minutes
+
+/// Views per minute of a window, counted from its start.
+pub struct MinuteCollector {
+    pub start: i64,
+    pub count: usize,
+}
+
+pub struct MinuteSegment {
+    ts: Option<Column<i64>>,
+    start: i64,
+    counts: Vec<u32>,
+}
+
+impl Collector for MinuteCollector {
+    type Fruit = Vec<u32>;
+    type Child = MinuteSegment;
+
+    fn for_segment(&self, _id: u32, reader: &SegmentReader) -> tantivy::Result<MinuteSegment> {
+        Ok(MinuteSegment { ts: column::<i64>(reader, "ts")?, start: self.start, counts: vec![0; self.count] })
+    }
+
+    fn requires_scoring(&self) -> bool {
+        false
+    }
+
+    fn merge_fruits(&self, fruits: Vec<Vec<u32>>) -> tantivy::Result<Vec<u32>> {
+        let mut out = vec![0u32; self.count];
+        for f in fruits {
+            for (a, b) in out.iter_mut().zip(f) {
+                *a += b;
+            }
+        }
+        Ok(out)
+    }
+}
+
+impl SegmentCollector for MinuteSegment {
+    type Fruit = Vec<u32>;
+
+    fn collect(&mut self, doc: DocId, _score: Score) {
+        let Some(ts) = self.ts.as_ref().and_then(|c| c.first(doc)) else { return };
+        if ts >= self.start {
+            if let Some(slot) = self.counts.get_mut(((ts - self.start) / 60) as usize) {
+                *slot += 1;
+            }
+        }
+    }
+
+    fn harvest(self) -> Vec<u32> {
+        self.counts
     }
 }

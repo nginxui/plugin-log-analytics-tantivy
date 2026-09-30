@@ -60,8 +60,7 @@ pub async fn dashboard(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, A
 
     let app = app.clone();
     tokio::task::spawn_blocking(move || -> Result<Resp, ApiError> {
-        let response =
-            analytics::dashboard(&app.engine.store.searcher(), app.engine.store.fields(), &group, start, end)?;
+        let response = app.engine.dashboard(&group, start, end)?;
         Ok(ok(&response))
     })
     .await

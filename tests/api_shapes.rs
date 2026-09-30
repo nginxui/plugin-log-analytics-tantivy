@@ -249,6 +249,7 @@ async fn errors_warm_rebuild_and_boundaries() {
 
     let (code, body) = api.post("/index/rebuild", json!({"path": "/etc/passwd"})).await;
     assert_eq!((code, &body["code"]), (500, &json!(50015)));
+    let before = api.app.engine.last_report().map_or(0, |r| r.round);
     let (code, body) = api.post("/index/rebuild", json!({})).await;
     assert_eq!(
         (code, &body["status"], &body["message"]),
@@ -257,7 +258,7 @@ async fn errors_warm_rebuild_and_boundaries() {
     // The rebuild runs in the background and ends with the same documents
     for _ in 0..200 {
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-        if !api.app.engine.round_running() && api.app.engine.last_report().is_some_and(|r| r.docs == 100) {
+        if !api.app.engine.round_running() && api.app.engine.last_report().is_some_and(|r| r.round > before) {
             break;
         }
     }

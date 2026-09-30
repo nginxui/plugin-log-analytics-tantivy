@@ -86,6 +86,9 @@ impl App {
         if previous.interval_minutes != next.interval_minutes {
             self.reset.notify_one();
         }
+        if previous.phrase_search != next.phrase_search {
+            self.engine.request_round();
+        }
     }
 
     /// Waits until the host accepts calls, then starts the schedule.

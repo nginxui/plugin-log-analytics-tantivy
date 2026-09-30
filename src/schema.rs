@@ -9,13 +9,15 @@ use crate::tokenizer;
 /// Version of the on disk format. The index is recreated when it differs, see
 /// [`crate::engine`]. Bump it with every change of the schema, the analyzers
 /// or what a document means.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// Handles to every field of the log index.
 #[derive(Clone, Debug)]
 pub struct Fields {
     pub ts: Field,
     pub ip: Field,
+    /// The address as a number (IPv4 is mapped into IPv6), for range queries.
+    pub ip_addr: Field,
     pub status: Field,
     pub method: Field,
     pub browser: Field,
@@ -79,18 +81,22 @@ fn phrase(fast: bool) -> TextOptions {
     }
 }
 
-/// The stored line, tokenized for the search box without positions.
-fn raw_text() -> TextOptions {
-    TextOptions::default().set_stored().set_indexing_options(
-        TextFieldIndexing::default().set_tokenizer(tokenizer::TEXT_NAME).set_index_option(IndexRecordOption::Basic),
-    )
+/// The stored line, tokenized for the search box. Positions make quoted
+/// phrases possible and cost index size and time, so they are optional.
+fn raw_text(positions: bool) -> TextOptions {
+    let record = if positions { IndexRecordOption::WithFreqsAndPositions } else { IndexRecordOption::Basic };
+    TextOptions::default()
+        .set_stored()
+        .set_indexing_options(TextFieldIndexing::default().set_tokenizer(tokenizer::TEXT_NAME).set_index_option(record))
 }
 
-pub fn build() -> (Schema, Fields) {
+/// Builds the schema. `positions` indexes the positions of the raw line.
+pub fn build(positions: bool) -> (Schema, Fields) {
     let mut b = Schema::builder();
     let fields = Fields {
         ts: b.add_i64_field("ts", INDEXED | FAST),
         ip: b.add_text_field("ip", keyword_fast()),
+        ip_addr: b.add_ip_addr_field("ip_addr", INDEXED | FAST),
         status: b.add_u64_field("status", INDEXED | FAST),
         method: b.add_text_field("method", keyword_fast()),
         browser: b.add_text_field("browser", keyword_fast()),
@@ -109,7 +115,7 @@ pub fn build() -> (Schema, Fields) {
         bytes_sent: b.add_u64_field("bytes_sent", NumericOptions::default().set_fast()),
         request_time: b.add_f64_field("request_time", NumericOptions::default().set_fast()),
         upstream_time: b.add_f64_field("upstream_time", NumericOptions::default().set_fast()),
-        raw: b.add_text_field("raw", raw_text()),
+        raw: b.add_text_field("raw", raw_text(positions)),
         main_log_path: b.add_text_field("main_log_path", keyword()),
         fp: b.add_text_field("fp", keyword()),
         off: b.add_u64_field("off", NumericOptions::default().set_fast()),

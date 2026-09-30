@@ -5,6 +5,7 @@ import { Button as AButton, Input as AInput, Select as ASelect } from 'antdv-nex
 import { ref } from 'vue'
 import { $gettext } from '@/gettext'
 import { browserOptions, deviceOptions, methodOptions, osOptions, statusOptions } from './search-filter-options'
+import SearchSyntaxHelp from './SearchSyntaxHelp.vue'
 
 // Emits
 interface Emits {
@@ -66,6 +67,7 @@ function handleReset() {
         <div class="lg:la-col-span-2">
           <label class="la-block la-text-xs la-font-medium la-text-gray-700 dark:la-text-trueGray-300 la-mb-1">
             {{ $gettext('Full Text Search') }}
+            <SearchSyntaxHelp />
           </label>
           <AInput
             v-model:value="filters.query"
