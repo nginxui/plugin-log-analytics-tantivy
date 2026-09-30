@@ -127,6 +127,7 @@ cargo test --release --test perf_dataset -- --ignored --nocapture
 cargo clippy --all-targets -- -D warnings
 cargo run --bin manifest                     # regenerate plugin.json
 ./build.sh --webapp-only                     # take the webapp into webapp/dist
+./build.sh --update-lock                     # pin the sibling webapp build in webapp.lock
 ./build.sh                                   # the packages in dist/
 ./build.sh --prebuilt DIR                    # package executables built elsewhere
 ./build.sh --webapp ARCHIVE                  # package another webapp build
@@ -155,6 +156,9 @@ plugins share. Its release archive holds one build per plugin id, and
 `webapp.lock` names the release this plugin packages with its checksum.
 `build.sh` takes the archive from `--webapp`, from a sibling checkout
 (`../plugin-log-analytics-webapp/release`) or from the release download, and
-unpacks the build of this plugin into `webapp/dist`. Features the Go plugin
+unpacks the build of this plugin into `webapp/dist`. After `bun run package`
+in the webapp, `./build.sh --update-lock` pins the new archive in
+`webapp.lock`; a build warns when the sibling archive differs from the lock.
+Features the Go plugin
 lacks are announced in the `features` of the preflight answer, such as the
 search syntax help.

@@ -65,34 +65,62 @@ fn parse_types() -> Interfaces {
 
 /// Checks a value against an interface: every declared field that is not
 /// optional is there, and every field has the kind its type says.
-fn check(types: &Interfaces, interface: &str, value: &Value, path: &str) {
-    let fields = types.get(interface).unwrap_or_else(|| panic!("no interface {interface}"));
-    let object = value.as_object().unwrap_or_else(|| panic!("{path}: expected an object for {interface}, got {value}"));
+fn shape_err(types: &Interfaces, interface: &str, value: &Value, path: &str) -> Result<(), String> {
+    let fields = types.get(interface).ok_or_else(|| format!("no interface {interface}"))?;
+    let object = value.as_object().ok_or_else(|| format!("{path}: expected an object for {interface}, got {value}"))?;
     for (key, field) in fields {
         match object.get(key) {
-            None => assert!(field.optional, "{path}.{key} is missing ({interface})"),
-            Some(v) => check_kind(types, &field.ty, v, &format!("{path}.{key}")),
+            None if field.optional => {}
+            None => return Err(format!("{path}.{key} is missing ({interface})")),
+            Some(v) => kind_err(types, &field.ty, v, &format!("{path}.{key}"))?,
         }
+    }
+    Ok(())
+}
+
+fn kind_err(types: &Interfaces, ty: &str, value: &Value, path: &str) -> Result<(), String> {
+    let ty = ty.trim().trim_end_matches(',');
+    let kind = |ok: bool, want: &str| if ok { Ok(()) } else { Err(format!("{path}: expected {want}, got {value}")) };
+    if let Some(item) = ty.strip_suffix("[]") {
+        let array = value.as_array().ok_or_else(|| format!("{path}: expected an array, got {value}"))?;
+        for (i, v) in array.iter().take(3).enumerate() {
+            kind_err(types, item, v, &format!("{path}[{i}]"))?;
+        }
+        Ok(())
+    } else if let Some(members) = ty.strip_prefix('(').and_then(|t| t.strip_suffix(')')) {
+        // A union of interfaces: the value matches one of them
+        let mut errors = Vec::new();
+        for member in members.split('|') {
+            match kind_err(types, member, value, path) {
+                Ok(()) => return Ok(()),
+                Err(e) => errors.push(e),
+            }
+        }
+        Err(format!("{path} matches no member of {ty}: {}", errors.join("; ")))
+    } else if ty.starts_with("number") {
+        kind(value.is_number(), "a number")
+    } else if ty.starts_with("boolean") {
+        kind(value.is_boolean(), "a boolean")
+    } else if ty.starts_with("string") || ty.contains('\'') || ty.contains("| string") {
+        kind(value.is_string(), "a string")
+    } else if ty.starts_with('{') {
+        kind(value.is_object(), "an object")
+    } else if types.contains_key(ty) {
+        shape_err(types, ty, value, path)
+    } else {
+        Ok(())
+    }
+}
+
+fn check(types: &Interfaces, interface: &str, value: &Value, path: &str) {
+    if let Err(e) = shape_err(types, interface, value, path) {
+        panic!("{e}");
     }
 }
 
 fn check_kind(types: &Interfaces, ty: &str, value: &Value, path: &str) {
-    let ty = ty.trim().trim_end_matches(',');
-    if let Some(item) = ty.strip_suffix("[]") {
-        let array = value.as_array().unwrap_or_else(|| panic!("{path}: expected an array, got {value}"));
-        for (i, v) in array.iter().take(3).enumerate() {
-            check_kind(types, item, v, &format!("{path}[{i}]"));
-        }
-    } else if ty.starts_with("number") {
-        assert!(value.is_number(), "{path}: expected a number, got {value}");
-    } else if ty.starts_with("boolean") {
-        assert!(value.is_boolean(), "{path}: expected a boolean, got {value}");
-    } else if ty.starts_with("string") || ty.contains("'") || ty.contains("| string") {
-        assert!(value.is_string(), "{path}: expected a string, got {value}");
-    } else if ty.starts_with('{') {
-        assert!(value.is_object(), "{path}: expected an object, got {value}");
-    } else if types.contains_key(ty) {
-        check(types, ty, value, path);
+    if let Err(e) = kind_err(types, ty, value, path) {
+        panic!("{e}");
     }
 }
 
