@@ -89,7 +89,13 @@ fn bed() -> Bed {
     zone();
     let bed = Bed::new();
     // Two parser threads and a commit every few hundred lines
-    bed.engine.override_sizing(Sizing { heap_mb: 30, threads: 2, batch_lines: 50, commit_every: 400 });
+    bed.engine.override_sizing(Sizing {
+        heap_mb: 30,
+        threads: 2,
+        merge_threads: 1,
+        batch_lines: 50,
+        commit_every: 400,
+    });
     bed
 }
 

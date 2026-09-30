@@ -2,50 +2,129 @@
 //! cgroups on Linux like the Go plugin, and a few process readings.
 
 #[cfg(target_os = "linux")]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-/// Memory limit of the cgroup of this process, when one is set.
 #[cfg(target_os = "linux")]
-fn cgroup_memory_limit() -> Option<u64> {
-    const SENTINEL: u64 = 1 << 60;
-    let own = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let v2_path = own.lines().find_map(|l| l.strip_prefix("0::")).map(str::to_owned).unwrap_or_else(|| "/".to_owned());
+const CGROUP_ROOT: &str = "/sys/fs/cgroup";
 
-    let read = |p: &Path| -> Option<u64> {
-        let text = std::fs::read_to_string(p).ok()?;
-        let text = text.trim();
-        if text == "max" {
-            return None;
-        }
-        text.parse::<u64>().ok().filter(|v| *v > 0 && *v < SENTINEL)
+/// Directories holding the limits of this process, from its own group up to
+/// the root. `controller` is `None` for the unified hierarchy, otherwise the
+/// name of a v1 controller. Without group information only the root is listed.
+#[cfg(target_os = "linux")]
+fn group_dirs(controller: Option<&str>) -> Vec<PathBuf> {
+    let base = match controller {
+        Some(c) => Path::new(CGROUP_ROOT).join(c),
+        None => PathBuf::from(CGROUP_ROOT),
     };
-
-    let mut best: Option<u64> = None;
-    let mut consider = |v: Option<u64>| {
-        if let Some(v) = v {
-            best = Some(best.map_or(v, |b| b.min(v)));
-        }
+    let own = std::fs::read_to_string("/proc/self/cgroup").ok().and_then(|text| own_group(&text, controller));
+    let Some(own) = own.filter(|p| p.starts_with('/')) else {
+        return vec![base];
     };
-    let mut dir = Path::new("/sys/fs/cgroup").join(v2_path.trim_start_matches('/'));
+    let mut dirs = Vec::new();
+    let mut current = PathBuf::from(own);
     loop {
-        consider(read(&dir.join("memory.max")));
-        if dir == Path::new("/sys/fs/cgroup") || !dir.pop() {
+        dirs.push(base.join(current.strip_prefix("/").unwrap_or(&current)));
+        if !current.pop() {
             break;
         }
     }
-    consider(read(Path::new("/sys/fs/cgroup/memory/memory.limit_in_bytes")));
+    dirs
+}
+
+/// The group path of one line of /proc/self/cgroup: the unified entry when
+/// `controller` is `None`, otherwise the entry listing that controller.
+#[cfg(target_os = "linux")]
+fn own_group(text: &str, controller: Option<&str>) -> Option<String> {
+    text.lines().find_map(|line| {
+        let mut parts = line.splitn(3, ':');
+        let (id, controllers, path) = (parts.next()?, parts.next()?, parts.next()?);
+        let matches = match controller {
+            None => id == "0" && controllers.is_empty(),
+            Some(c) => controllers.split(',').any(|x| x == c),
+        };
+        matches.then(|| path.to_owned())
+    })
+}
+
+/// A cgroup file holding one number. "max", zero and the sentinels some
+/// kernels use for no limit read as `None`.
+#[cfg(target_os = "linux")]
+fn read_limit(path: &Path) -> Option<u64> {
+    const SENTINEL: u64 = 1 << 60;
+    let text = std::fs::read_to_string(path).ok()?;
+    text.trim().parse::<u64>().ok().filter(|v| *v > 0 && *v < SENTINEL)
+}
+
+/// One field of a cgroup or proc file of "name value" lines.
+#[cfg(target_os = "linux")]
+fn read_field(path: &Path, name: &str) -> Option<u64> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines().find_map(|l| {
+        let mut it = l.split_whitespace();
+        (it.next()?.trim_end_matches(':') == name).then(|| it.next()?.parse().ok()).flatten()
+    })
+}
+
+/// The memory limit of this process and the anonymous memory of the group
+/// that sets it: the smallest limit of the own group and its ancestors, in the
+/// unified hierarchy and in the v1 memory controller.
+#[cfg(target_os = "linux")]
+fn cgroup_memory() -> Option<(u64, Option<u64>)> {
+    let mut best: Option<(u64, Option<u64>)> = None;
+    let mut consider = |limit: Option<u64>, anon: &dyn Fn() -> Option<u64>| {
+        if let Some(limit) = limit {
+            if best.is_none_or(|(b, _)| limit < b) {
+                best = Some((limit, anon()));
+            }
+        }
+    };
+    for dir in group_dirs(None) {
+        consider(read_limit(&dir.join("memory.max")), &|| read_field(&dir.join("memory.stat"), "anon"));
+    }
+    for dir in group_dirs(Some("memory")) {
+        consider(read_limit(&dir.join("memory.limit_in_bytes")), &|| read_field(&dir.join("memory.stat"), "total_rss"));
+    }
     best
 }
 
 #[cfg(target_os = "linux")]
+fn meminfo(name: &str) -> Option<u64> {
+    read_field(Path::new("/proc/meminfo"), name).map(|kb| kb * 1024)
+}
+
+#[cfg(target_os = "linux")]
 fn total_memory() -> Option<u64> {
-    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
-    let kb: u64 = text.lines().find_map(|l| l.strip_prefix("MemTotal:"))?.split_whitespace().next()?.parse().ok()?;
-    Some(kb * 1024)
+    meminfo("MemTotal")
+}
+
+/// Anonymous memory this process holds.
+#[cfg(target_os = "linux")]
+fn own_anon() -> u64 {
+    read_field(Path::new("/proc/self/status"), "RssAnon").map_or(0, |kb| kb * 1024)
+}
+
+/// The memory budget of this process: the cgroup limit less what the other
+/// processes of the group hold, or without a limit the available memory and
+/// what this process holds. Never above the total memory.
+#[cfg(target_os = "linux")]
+fn memory_budget() -> Option<u64> {
+    let total = total_memory();
+    let own = own_anon();
+    let budget = match cgroup_memory() {
+        Some((limit, anon)) => {
+            let others = anon.map_or(0, |a| a.saturating_sub(own));
+            Some(limit.saturating_sub(others))
+        }
+        None => meminfo("MemAvailable").map(|a| a + own).or(total),
+    };
+    match (budget, total) {
+        (Some(b), Some(t)) => Some(b.min(t)),
+        (b, t) => b.or(t),
+    }
 }
 
 #[cfg(target_os = "macos")]
-fn total_memory() -> Option<u64> {
+fn memory_budget() -> Option<u64> {
     let mut size: u64 = 0;
     let mut len = std::mem::size_of::<u64>();
     let name = std::ffi::CString::new("hw.memsize").ok()?;
@@ -56,25 +135,17 @@ fn total_memory() -> Option<u64> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-fn total_memory() -> Option<u64> {
+fn memory_budget() -> Option<u64> {
     None
 }
 
-#[cfg(not(target_os = "linux"))]
-fn cgroup_memory_limit() -> Option<u64> {
-    None
-}
-
-/// The memory budget in bytes: the cgroup limit when it is below the total
-/// memory, otherwise the total memory. `None` when neither is known.
+/// The memory budget in bytes, `None` when it cannot be read. The
+/// LOG_ANALYTICS_MEMORY_MB environment variable replaces it.
 pub fn available_memory() -> Option<u64> {
     if let Some(mb) = std::env::var("LOG_ANALYTICS_MEMORY_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()) {
         return Some(mb << 20);
     }
-    match (cgroup_memory_limit(), total_memory()) {
-        (Some(limit), Some(total)) => Some(limit.min(total)),
-        (limit, total) => limit.or(total),
-    }
+    memory_budget()
 }
 
 /// CPUs the process may use: the smaller of the parallelism and the cgroup
@@ -87,25 +158,28 @@ pub fn available_cpus() -> usize {
     }
 }
 
+/// The smallest CPU quota of the own group and its ancestors, in the unified
+/// hierarchy and in the v1 cpu controller.
 #[cfg(target_os = "linux")]
 fn cpu_quota() -> Option<f64> {
-    let own = std::fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let path = own.lines().find_map(|l| l.strip_prefix("0::")).unwrap_or("/");
-    let mut dir = Path::new("/sys/fs/cgroup").join(path.trim_start_matches('/'));
     let mut best: Option<f64> = None;
-    loop {
+    let mut consider = |q: f64, p: f64| {
+        if q > 0.0 && p > 0.0 {
+            best = Some(best.map_or(q / p, |b: f64| b.min(q / p)));
+        }
+    };
+    for dir in group_dirs(None) {
         if let Ok(text) = std::fs::read_to_string(dir.join("cpu.max")) {
             let mut it = text.split_whitespace();
-            if let (Some(q), Some(p)) = (it.next(), it.next()) {
-                if let (Ok(q), Ok(p)) = (q.parse::<f64>(), p.parse::<f64>()) {
-                    if q > 0.0 && p > 0.0 {
-                        best = Some(best.map_or(q / p, |b: f64| b.min(q / p)));
-                    }
-                }
+            if let (Some(Ok(q)), Some(Ok(p))) = (it.next().map(str::parse::<f64>), it.next().map(str::parse::<f64>)) {
+                consider(q, p);
             }
         }
-        if dir == Path::new("/sys/fs/cgroup") || !dir.pop() {
-            break;
+    }
+    for dir in group_dirs(Some("cpu")) {
+        let read = |name: &str| std::fs::read_to_string(dir.join(name)).ok()?.trim().parse::<f64>().ok();
+        if let (Some(q), Some(p)) = (read("cpu.cfs_quota_us"), read("cpu.cfs_period_us")) {
+            consider(q, p);
         }
     }
     best
@@ -152,6 +226,16 @@ pub fn release_memory() {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn own_group_reads_both_hierarchies() {
+        let text = "12:cpu,cpuacct:/docker/abc\n9:memory:/docker/abc\n0::/system.slice/x.scope\n";
+        assert_eq!(own_group(text, None).as_deref(), Some("/system.slice/x.scope"));
+        assert_eq!(own_group(text, Some("memory")).as_deref(), Some("/docker/abc"));
+        assert_eq!(own_group(text, Some("cpu")).as_deref(), Some("/docker/abc"));
+        assert_eq!(own_group(text, Some("pids")), None);
+    }
 
     #[test]
     fn budget_is_reported() {

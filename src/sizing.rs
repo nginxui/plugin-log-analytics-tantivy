@@ -1,9 +1,21 @@
 //! How much the indexer may use, from the memory and CPU budget of the
-//! process. The tiers follow the Go plugin: a small budget gets a small writer
-//! and one thread, a large one gets more of both.
+//! process. The writer heap is a share of the memory budget, and the threads,
+//! batches and commits grow with it.
 
 const MIB: u64 = 1024 * 1024;
-const GIB: u64 = 1024 * MIB;
+
+/// Share of the memory budget the writer heap takes. The rest covers merges,
+/// parsers, queries and the host process.
+const HEAP_SHARE: u64 = 4;
+/// Bounds of the writer heap in MiB. tantivy needs 15 MB per thread.
+const MIN_HEAP_MB: usize = 20;
+const MAX_HEAP_MB: usize = 1024;
+/// Heap of one writer thread in MiB; a smaller heap per thread makes many
+/// small segments to merge.
+const HEAP_PER_THREAD_MB: usize = 48;
+const MAX_THREADS: usize = 4;
+/// Budget assumed when it cannot be read.
+const UNKNOWN_BUDGET: u64 = 1024 * MIB;
 
 /// Sizes of one indexing run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,22 +24,28 @@ pub struct Sizing {
     pub heap_mb: usize,
     /// Indexing threads of the writer and parser threads of the pipeline.
     pub threads: usize,
+    /// Threads that merge segments in the background.
+    pub merge_threads: usize,
     /// Lines handed to a parser thread at once.
     pub batch_lines: usize,
     /// Documents between two commits of a bulk import.
     pub commit_every: u64,
 }
 
-/// Tiers by memory budget: under 1 GiB a 50 MB heap and one thread, from 4 GiB
-/// a 1 GiB heap and four threads, 200 MB and two threads in between. An
-/// unknown budget takes the middle tier. Threads never exceed the CPUs.
+/// Sizing for a memory budget in bytes and a number of CPUs. The heap is a
+/// quarter of the budget within 20 MiB and 1 GiB, one thread per 48 MiB of
+/// heap up to four and never more than the CPUs.
 pub fn sizing(memory: Option<u64>, cpus: usize) -> Sizing {
-    let (heap_mb, threads, batch_lines, commit_every) = match memory {
-        Some(m) if m < GIB => (50, 1, 1000, 200_000),
-        Some(m) if m >= 4 * GIB => (1024, 4, 5000, 500_000),
-        _ => (200, 2, 2000, 300_000),
-    };
-    Sizing { heap_mb, threads: threads.min(cpus.max(1)), batch_lines, commit_every }
+    let budget_mb = (memory.unwrap_or(UNKNOWN_BUDGET) / MIB / HEAP_SHARE) as usize;
+    let heap_mb = budget_mb.clamp(MIN_HEAP_MB, MAX_HEAP_MB);
+    let threads = (heap_mb / HEAP_PER_THREAD_MB).clamp(1, MAX_THREADS.min(cpus.max(1)));
+    Sizing {
+        heap_mb,
+        threads,
+        merge_threads: threads,
+        batch_lines: (heap_mb * 20).clamp(500, 5000),
+        commit_every: (heap_mb as u64 * 2000).clamp(200_000, 500_000),
+    }
 }
 
 /// Sizing of this process.
@@ -40,20 +58,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tiers_follow_the_memory_budget() {
+    fn heap_is_a_share_of_the_budget() {
         assert_eq!(
-            sizing(Some(512 * MIB), 8),
-            Sizing { heap_mb: 50, threads: 1, batch_lines: 1000, commit_every: 200_000 }
+            sizing(Some(128 * MIB), 8),
+            Sizing { heap_mb: 32, threads: 1, merge_threads: 1, batch_lines: 640, commit_every: 200_000 }
         );
-        assert_eq!(sizing(Some(2 * GIB), 8).heap_mb, 200);
-        assert_eq!(sizing(Some(2 * GIB), 8).threads, 2);
-        assert_eq!(sizing(Some(8 * GIB), 8).threads, 4);
-        assert_eq!(sizing(None, 8).heap_mb, 200);
+        assert_eq!(sizing(Some(64 * MIB), 8).heap_mb, 20);
+        assert_eq!(sizing(Some(512 * MIB), 8).heap_mb, 128);
+        assert_eq!(sizing(Some(512 * MIB), 8).threads, 2);
+        assert_eq!(sizing(Some(1024 * MIB), 8).threads, 4);
+        assert_eq!(sizing(Some(16 * 1024 * MIB), 8).heap_mb, 1024);
+        assert_eq!(sizing(Some(16 * 1024 * MIB), 8).batch_lines, 5000);
+        assert_eq!(sizing(Some(16 * 1024 * MIB), 8).commit_every, 500_000);
+        assert_eq!(sizing(None, 8).heap_mb, 256);
     }
 
     #[test]
     fn threads_are_capped_by_the_cpus() {
-        assert_eq!(sizing(Some(16 * GIB), 2).threads, 2);
-        assert_eq!(sizing(Some(16 * GIB), 0).threads, 1);
+        assert_eq!(sizing(Some(16 * 1024 * MIB), 2).threads, 2);
+        assert_eq!(sizing(Some(16 * 1024 * MIB), 0).threads, 1);
     }
 }

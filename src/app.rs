@@ -223,7 +223,13 @@ mod tests {
 
         let mut app = App::open(dir.path().join("data")).unwrap();
         Arc::get_mut(&mut app).unwrap().first_round_delay = Duration::from_millis(50);
-        app.engine.override_sizing(crate::sizing::Sizing { heap_mb: 20, threads: 1, batch_lines: 50, commit_every: 0 });
+        app.engine.override_sizing(crate::sizing::Sizing {
+            heap_mb: 20,
+            threads: 1,
+            merge_threads: 1,
+            batch_lines: 50,
+            commit_every: 0,
+        });
         app.set_logs(vec![HostLog {
             path: log.to_string_lossy().into_owned(),
             kind: "access".into(),

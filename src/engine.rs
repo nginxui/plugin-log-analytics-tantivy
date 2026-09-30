@@ -493,12 +493,8 @@ impl Engine {
         if configured > 0 {
             return configured as usize;
         }
-        // Small budgets index one group at a time
-        if sizing.heap_mb <= 50 {
-            1
-        } else {
-            sizing.threads.min(2)
-        }
+        // A writer with one thread indexes one group at a time
+        sizing.threads.min(2)
     }
 
     fn open_geo(&self) -> Arc<Geo> {

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tantivy::indexer::LogMergePolicy;
+use tantivy::indexer::{IndexWriterOptions, LogMergePolicy};
 use tantivy::store::{Compressor, ZstdCompressor};
 use tantivy::{Index, IndexReader, IndexSettings, IndexWriter, ReloadPolicy, Searcher, TantivyDocument};
 
@@ -123,7 +123,12 @@ impl Store {
 
     /// A writer with the merge policy of the log index.
     pub fn writer(&self, sizing: &Sizing) -> Result<IndexWriter<TantivyDocument>, StoreError> {
-        let writer = self.index.writer_with_num_threads::<TantivyDocument>(sizing.threads, sizing.heap_mb << 20)?;
+        let options = IndexWriterOptions::builder()
+            .num_worker_threads(sizing.threads)
+            .memory_budget_per_thread((sizing.heap_mb << 20) / sizing.threads)
+            .num_merge_threads(sizing.merge_threads)
+            .build();
+        let writer = self.index.writer_with_options::<TantivyDocument>(options)?;
         let mut policy = LogMergePolicy::default();
         policy.set_min_num_segments(MERGE_MIN_SEGMENTS);
         policy.set_max_docs_before_merge(MERGE_MAX_DOCS);

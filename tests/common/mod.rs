@@ -19,7 +19,7 @@ pub struct Bed {
     pub engine: Arc<Engine>,
 }
 
-pub const SMALL: Sizing = Sizing { heap_mb: 20, threads: 1, batch_lines: 50, commit_every: 0 };
+pub const SMALL: Sizing = Sizing { heap_mb: 20, threads: 1, merge_threads: 1, batch_lines: 50, commit_every: 0 };
 
 impl Bed {
     pub fn new() -> Bed {
