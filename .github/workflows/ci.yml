@@ -1,0 +1,106 @@
+name: CI
+
+# Runs on every pull request and on main. The plugin depends on the Rust SDK
+# through a path (../plugin-sdk-rust) and the webapp on the web SDK through
+# file:../../plugin-sdk-web, so both SDK repositories are checked out next to
+# this one. Drop those checkouts once the SDKs are published and the local
+# paths are gone.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin-log-analytics-rs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin-log-analytics-rs
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-sdk-rust
+          path: plugin-sdk-rust
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: plugin-log-analytics-rs
+
+      - run: cargo fmt --all --check
+
+      - run: cargo clippy --locked --all-targets -- -D warnings
+
+      # The debug profile keeps the build short (the test profile carries no
+      # debug info). The perf dataset test is ignored and stays out of CI.
+      - run: cargo test --locked
+
+  webapp:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin-log-analytics-rs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin-log-analytics-rs
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-sdk-rust
+          path: plugin-sdk-rust
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-sdk-web
+          path: plugin-sdk-web
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: plugin-log-analytics-rs
+
+      - uses: oven-sh/setup-bun@v2
+
+      # The webapp resolves @nginxui/plugin-sdk to the SDK checkout, whose
+      # package exports point at dist/, so the SDK is built first.
+      - name: Build the web SDK
+        working-directory: plugin-sdk-web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Webapp checks and bundle
+        working-directory: plugin-log-analytics-rs/webapp
+        run: |
+          bun install --frozen-lockfile
+          bun run typecheck
+          bun run lint
+          bun test tests
+          bun run build
+
+      # plugin.json is committed and the catalog reads it from the release
+      # tag, so it must be what the manifest binary generates from the code
+      # and the webapp fragment of the bundle built above.
+      - name: plugin.json is up to date
+        run: |
+          cargo run --locked --quiet --bin manifest -- -out "${RUNNER_TEMP}/plugin.json" >/dev/null
+          diff -u plugin.json "${RUNNER_TEMP}/plugin.json"

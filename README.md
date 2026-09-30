@@ -112,7 +112,20 @@ cargo clippy --all-targets -- -D warnings
 cargo run --bin manifest                     # regenerate plugin.json
 (cd webapp && bun install && bun run build)  # the browser bundle
 ./build.sh                                   # the packages in dist/
+./build.sh --prebuilt DIR                    # package executables built elsewhere
 ```
+
+## Releases
+
+Pushing a tag `vX.Y.Z` that matches the version in `plugin.json` and
+`Cargo.toml` runs `.github/workflows/release.yml`. It builds the six
+executables natively on GitHub runners, packages them with
+`build.sh --prebuilt`, signs `plugin.sums` with the key of the `release`
+environment (`PLUGIN_SIGNING_KEY`, `PLUGIN_SIGNING_KEY_PASSWORD`), verifies the
+archives against the `PLUGIN_SIGNING_PUBLIC_KEY` variable and publishes the
+archives and their `.sha256` files as a GitHub release. The notes come from the
+matching section of `CHANGELOG.md`, and a version with a prerelease part such
+as `0.1.0-beta.1` is marked as a prerelease.
 
 `webapp/` is a copy of the web pages of `com.nginxui.log-analytics`. Only the
 plugin id in `webapp/build.constants.ts` differs, and the runtime and asset keys

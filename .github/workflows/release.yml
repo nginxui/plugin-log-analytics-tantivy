@@ -1,0 +1,302 @@
+name: Release
+
+# Builds, signs and publishes the six per-platform packages when a version
+# tag is pushed. The tag must match plugin.json, e.g. v1.0.0 for
+# "version": "1.0.0". A version with a prerelease part (0.1.0-beta.1) is
+# published as a GitHub prerelease.
+#
+# Three stages with separate privileges:
+#   build    one native job per platform, read only, no secrets
+#   package  builds the webapp, packages and signs, holds the signing key
+#            through the "release" environment, read only
+#   publish  creates the GitHub release, the only job that can write
+#
+# The "release" environment holds PLUGIN_SIGNING_KEY (the minisign secret key
+# file) and PLUGIN_SIGNING_KEY_PASSWORD. Give the environment a required
+# reviewer so a pushed tag alone cannot sign. The PLUGIN_SIGNING_PUBLIC_KEY
+# variable, the matching public key, lets the run verify what it signed. The
+# catalog (nginxui/plugins) polls this repository's releases and picks the new
+# one up on its own.
+#
+# Like ci.yml, the SDKs are checked out next to this repository until they
+# are published. No cargo cache is used here, so a cache written by a pull
+# request can never end up in a signed binary.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: build ${{ matrix.key }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - key: linux-amd64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - key: linux-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          # Cross built from the arm64 runner: the Intel macOS runners are
+          # retired, and the target only needs the Apple SDK of the host.
+          - key: darwin-amd64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+          - key: darwin-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+          # MSVC rather than GNU: it is what Rust tests on Windows, and
+          # mimalloc is left out of Windows builds anyway (see Cargo.toml).
+          - key: windows-amd64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - key: windows-arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin-log-analytics-rs
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-sdk-rust
+          path: plugin-sdk-rust
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Static musl binaries need the musl C compiler for the C parts of the
+      # dependencies (lzma, mimalloc, ring).
+      - name: Install musl tools
+        if: contains(matrix.target, 'linux-musl')
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+
+      - name: Build the executable
+        shell: bash
+        working-directory: plugin-log-analytics-rs
+        env:
+          KEY: ${{ matrix.key }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if [[ "${TARGET}" == *linux-musl ]]; then
+            export "CC_${TARGET//-/_}=musl-gcc"
+          fi
+          cargo build --locked --release --target "${TARGET}" --bin log-analytics-rs
+          ext=""
+          if [[ "${KEY}" == windows-* ]]; then
+            ext=".exe"
+          fi
+          mkdir -p "${RUNNER_TEMP}/out"
+          cp "target/${TARGET}/release/log-analytics-rs${ext}" "${RUNNER_TEMP}/out/log-analytics-rs-${KEY}${ext}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.key }}
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      has_notes: ${{ steps.meta.outputs.has_notes }}
+    defaults:
+      run:
+        working-directory: plugin-log-analytics-rs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin-log-analytics-rs
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-sdk-rust
+          path: plugin-sdk-rust
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          repository: nginxui/plugin-sdk-web
+          path: plugin-sdk-web
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Check that the tag matches plugin.json and Cargo.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' plugin.json | head -n 1)
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "${tag}" != "${version}" ]; then
+            echo "tag v${tag} does not match plugin.json version ${version}"
+            exit 1
+          fi
+          if [ "${tag}" != "${crate}" ]; then
+            echo "tag v${tag} does not match Cargo.toml version ${crate}"
+            exit 1
+          fi
+
+      - name: Build the web SDK
+        working-directory: plugin-sdk-web
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Build the webapp bundle
+        working-directory: plugin-log-analytics-rs/webapp
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: plugin.json is up to date
+        run: |
+          cargo run --locked --release --quiet --bin manifest -- -out "${RUNNER_TEMP}/plugin.json" >/dev/null
+          diff -u plugin.json "${RUNNER_TEMP}/plugin.json"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: binaries
+
+      - name: Install minisign
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+
+      - name: Package and sign
+        env:
+          PLUGIN_SIGNING_KEY: ${{ secrets.PLUGIN_SIGNING_KEY }}
+          PLUGIN_SIGNING_KEY_PASSWORD: ${{ secrets.PLUGIN_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PLUGIN_SIGNING_KEY}" ]; then
+            echo "the PLUGIN_SIGNING_KEY secret is not set in the release environment; a release must be signed"
+            exit 1
+          fi
+          key_file="${RUNNER_TEMP}/plugin-signing.key"
+          trap 'rm -f "${key_file}"' EXIT
+          (umask 077 && printf '%s\n' "${PLUGIN_SIGNING_KEY}" >"${key_file}")
+          MINISIGN_KEY="${key_file}" MINISIGN_PASSWORD="${PLUGIN_SIGNING_KEY_PASSWORD}" ./build.sh --prebuilt binaries
+
+      # Every archive: its .sha256 file, plugin.sums against the extracted
+      # files, and the signature against the release public key when the
+      # variable is set.
+      - name: Verify the packages
+        env:
+          PLUGIN_SIGNING_PUBLIC_KEY: ${{ vars.PLUGIN_SIGNING_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          public_key=$(printf '%s\n' "${PLUGIN_SIGNING_PUBLIC_KEY}" | grep -Ev '^untrusted comment:' | tr -d '[:space:]')
+          if [ -z "${public_key}" ]; then
+            echo "::notice title=Signatures not checked::Set the PLUGIN_SIGNING_PUBLIC_KEY variable to the release public key to verify the signatures here."
+          fi
+          count=$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)
+          if [ "${count}" -ne 6 ]; then
+            echo "expected 6 archives, found ${count}"
+            exit 1
+          fi
+          for archive in dist/*.tar.gz; do
+            echo "::group::${archive}"
+            (cd dist && sha256sum -c "$(basename "${archive}").sha256")
+            dir=$(mktemp -d)
+            tar -xzf "${archive}" -C "${dir}"
+            test -f "${dir}/plugin.sums"
+            test -f "${dir}/plugin.sums.minisig"
+            (cd "${dir}" && sha256sum -c --quiet plugin.sums)
+            if [ -n "${public_key}" ]; then
+              minisign -V -q -m "${dir}/plugin.sums" -x "${dir}/plugin.sums.minisig" -P "${public_key}"
+              echo "plugin.sums.minisig verifies against PLUGIN_SIGNING_PUBLIC_KEY"
+            fi
+            rm -rf "${dir}"
+            echo "::endgroup::"
+          done
+
+      # The notes are this version's section of CHANGELOG.md when it has one.
+      - name: Release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          notes="dist/notes.md"
+          awk -v heading="## [${version}]" '
+            /^## / { on = index($0, heading) == 1; next }
+            on { print }
+          ' CHANGELOG.md >"${notes}"
+          if grep -q '[^[:space:]]' "${notes}"; then
+            echo "has_notes=true" >>"${GITHUB_OUTPUT}"
+          else
+            echo "CHANGELOG.md has no section for ${version}, the notes will be generated"
+            echo "has_notes=false" >>"${GITHUB_OUTPUT}"
+          fi
+          case "${version}" in
+            *-*) echo "prerelease=true" >>"${GITHUB_OUTPUT}" ;;
+            *) echo "prerelease=false" >>"${GITHUB_OUTPUT}" ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          path: |
+            plugin-log-analytics-rs/dist/*.tar.gz
+            plugin-log-analytics-rs/dist/*.tar.gz.sha256
+            plugin-log-analytics-rs/dist/notes.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: release
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_NOTES: ${{ needs.package.outputs.has_notes }}
+          PRERELEASE: ${{ needs.package.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          # The artifact keeps the common parent of its files, so find them.
+          files=$(find release -name '*.tar.gz' -o -name '*.tar.gz.sha256')
+          notes_file=$(find release -name notes.md)
+          args=(--repo "${GITHUB_REPOSITORY}" --verify-tag --title "${GITHUB_REF_NAME}")
+          if [ "${HAS_NOTES}" = "true" ]; then
+            args+=(--notes-file "${notes_file}")
+          else
+            args+=(--generate-notes)
+          fi
+          if [ "${PRERELEASE}" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          # shellcheck disable=SC2086
+          gh release create "${GITHUB_REF_NAME}" "${args[@]}" ${files}

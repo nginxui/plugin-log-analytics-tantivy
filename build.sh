@@ -3,6 +3,7 @@
 #
 #   ./build.sh              every platform whose Rust target is installed
 #   ./build.sh --host-only  the platform of this machine only
+#   ./build.sh --prebuilt DIR  package executables built elsewhere
 #
 # Every platform gets its own package, dist/<id>-<version>-<os>-<arch>.tar.gz,
 # with one executable and a plugin.json whose server.executables names only that
@@ -16,6 +17,12 @@
 # Native targets build with cargo, the others with cargo zigbuild. A platform
 # whose target is not installed is skipped with the command that would add it.
 # Set CARGO_NET_OFFLINE=true to build from the local crate cache.
+#
+# With --prebuilt DIR nothing is compiled. DIR holds one executable per
+# platform named as in the package, log-analytics-rs-<os>-<arch> with .exe on
+# Windows, and every platform must have one (--host-only narrows that to the
+# platform of this machine). The release workflow builds the executables on
+# native runners and packages them this way.
 #
 # Every package also carries plugin.sums at its root: the sha256 of each file of
 # the package in sha256sum format, sorted by path. When MINISIGN_KEY names a
@@ -46,20 +53,38 @@ PLATFORMS=(
   "windows-arm64|aarch64-pc-windows-gnullvm|zigbuild"
 )
 
+USAGE="usage: $0 [--host-only] [--prebuilt DIR]"
 HOST_ONLY=0
-for arg in "$@"; do
-  case "${arg}" in
+PREBUILT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --host-only) HOST_ONLY=1 ;;
+    --prebuilt)
+      if [[ $# -lt 2 ]]; then
+        echo "${USAGE}" >&2
+        exit 2
+      fi
+      PREBUILT="$2"
+      shift
+      ;;
     -h | --help)
-      echo "usage: $0 [--host-only]"
+      echo "${USAGE}"
       exit 0
       ;;
     *)
-      echo "usage: $0 [--host-only]" >&2
+      echo "${USAGE}" >&2
       exit 2
       ;;
   esac
+  shift
 done
+if [[ -n "${PREBUILT}" ]]; then
+  if [[ ! -d "${PREBUILT}" ]]; then
+    echo "--prebuilt does not name a directory: ${PREBUILT}" >&2
+    exit 1
+  fi
+  PREBUILT="$(cd "${PREBUILT}" && pwd)"
+fi
 
 MINISIGN_KEY="${MINISIGN_KEY:-}"
 MINISIGN_PASSWORD="${MINISIGN_PASSWORD:-}"
@@ -194,17 +219,6 @@ for entry in "${PLATFORMS[@]}"; do
   if [[ "${HOST_ONLY}" -eq 1 && "${key}" != "${HOST_KEY}" ]]; then
     continue
   fi
-  if ! grep -qx "${target}" <<<"${INSTALLED}"; then
-    SKIPPED+=("${key}: rustup target add ${target}")
-    continue
-  fi
-
-  echo "  ${key} (${target}, ${tool})"
-  if [[ "${tool}" == "zigbuild" ]]; then
-    cargo zigbuild --release --target "${target}" --bin "${BIN}"
-  else
-    cargo build --release --target "${target}" --bin "${BIN}"
-  fi
 
   name="${BIN}-${key}"
   file="${BIN}"
@@ -213,9 +227,31 @@ for entry in "${PLATFORMS[@]}"; do
     file="${file}.exe"
   fi
 
+  if [[ -n "${PREBUILT}" ]]; then
+    source_file="${PREBUILT}/${name}"
+    if [[ ! -f "${source_file}" ]]; then
+      echo "${source_file} is missing" >&2
+      exit 1
+    fi
+    echo "  ${key} (prebuilt)"
+  else
+    if ! grep -qx "${target}" <<<"${INSTALLED}"; then
+      SKIPPED+=("${key}: rustup target add ${target}")
+      continue
+    fi
+    echo "  ${key} (${target}, ${tool})"
+    if [[ "${tool}" == "zigbuild" ]]; then
+      cargo zigbuild --release --target "${target}" --bin "${BIN}"
+    else
+      cargo build --release --target "${target}" --bin "${BIN}"
+    fi
+    source_file="${TARGET_DIR}/${target}/release/${file}"
+  fi
+
   dir="${STAGE}/${key}"
   mkdir -p "${dir}/server/dist"
-  cp "${TARGET_DIR}/${target}/release/${file}" "${dir}/server/dist/${name}"
+  cp "${source_file}" "${dir}/server/dist/${name}"
+  chmod 755 "${dir}/server/dist/${name}"
   echo "    ${name} ($(du -h "${dir}/server/dist/${name}" | cut -f1 | tr -d '[:space:]'))"
   stage_common "${dir}"
   "${MANIFEST_TOOL}" -platform "${key}" -out "${dir}/plugin.json" >/dev/null
