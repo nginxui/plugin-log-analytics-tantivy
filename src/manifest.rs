@@ -134,13 +134,6 @@ pub fn build(shared: HashMap<String, String>) -> Manifest {
                     "Path of your own IP location database file. Empty uses the downloaded one.",
                     Value::Null,
                 ),
-                setting(
-                    "geo_map_path",
-                    "text",
-                    "Map files folder",
-                    "Folder with the map outline files. Empty uses the plugin's own folder. Files not found there are loaded online.",
-                    Value::Null,
-                ),
             ],
             ..Default::default()
         }),

@@ -218,6 +218,11 @@ impl Geo {
             if !city_zh.is_empty() {
                 loc.city = city_zh;
             }
+            // Hong Kong, Macau and Taiwan are regions of the China map
+            if country != "CN" && is_chinese_region(&country) {
+                loc.sub1 = format!("CN-{country}");
+                loc.sub2.clear();
+            }
             loc.region_code = "CN".to_owned();
         }
         if let (Some(lat), Some(lon)) = (record.location.latitude, record.location.longitude) {

@@ -1,8 +1,8 @@
-//! Index maintenance: rebuild, warm up and the map boundary files.
+//! Index maintenance: rebuild and warm up.
 
 use std::sync::Arc;
 
-use nginxui_plugin_sdk::http::{full_body, header, HeaderValue, Incoming, Request, Response, StatusCode};
+use nginxui_plugin_sdk::http::{Incoming, Request, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
 use tantivy::collector::Count;
@@ -62,46 +62,4 @@ pub fn warm(app: &Arc<App>) -> Resp {
         let _ = engine.store.searcher().search(&AllQuery, &Count);
     });
     json_response(StatusCode::ACCEPTED, &json!({"status": "warming"}))
-}
-
-fn is_boundary_name(name: &str) -> bool {
-    let b = name.as_bytes();
-    name.len() == 16 && b[..6].iter().all(u8::is_ascii_digit) && &name[6..] == "_full.json"
-}
-
-/// Serves one map outline file. The page falls back to a public mirror when it
-/// is not there.
-pub async fn boundary(app: &Arc<App>, filename: &str) -> Resp {
-    let name = filename.trim();
-    if !is_boundary_name(name) {
-        return json_response(StatusCode::BAD_REQUEST, &json!({"message": "invalid map file name"}));
-    }
-    let dir = app.engine.dirs.maps(&app.engine.settings());
-    match tokio::fs::read(dir.join(name)).await {
-        Ok(bytes) => {
-            let mut response = Response::new(full_body(bytes));
-            response
-                .headers_mut()
-                .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json; charset=utf-8"));
-            response
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            json_response(StatusCode::NOT_FOUND, &json!({"message": "map file not found"}))
-        }
-        Err(_) => json_response(StatusCode::INTERNAL_SERVER_ERROR, &json!({"message": "failed to read map file"})),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn boundary_names_are_six_digits_and_a_suffix() {
-        assert!(is_boundary_name("100000_full.json"));
-        assert!(!is_boundary_name("10000_full.json"));
-        assert!(!is_boundary_name("../000000_full.json"));
-        assert!(!is_boundary_name("100000_full.jsoN"));
-        assert!(!is_boundary_name("abcdef_full.json"));
-    }
 }

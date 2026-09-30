@@ -32,7 +32,6 @@ still shows countries.
 | `incremental_index_interval` | number | 15 | Minutes between two checks of the logs for new lines. Zero or empty means 15. |
 | `max_concurrent_index_tasks` | number | 0 | The most log files indexed at the same time. Zero takes one for a small memory budget and at most two otherwise. |
 | `index_custom_mmdb` | text | empty | Path of your own IP location database. A relative path is looked up in the `geolite` folder of the plugin data directory. The downloaded database wins when both exist. |
-| `geo_map_path` | text | empty | Folder with the map boundary files (`100000_full.json` and the province files). A relative path is looked up in the plugin data directory, empty means its `maps` folder. A file that is not there is fetched by the page from a public map source. |
 
 ## Search
 

@@ -89,12 +89,6 @@
         "type": "text",
         "display_name": "Custom IP location database",
         "help_text": "Path of your own IP location database file. Empty uses the downloaded one."
-      },
-      {
-        "key": "geo_map_path",
-        "type": "text",
-        "display_name": "Map files folder",
-        "help_text": "Folder with the map outline files. Empty uses the plugin's own folder. Files not found there are loaded online."
       }
     ]
   }

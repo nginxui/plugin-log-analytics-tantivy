@@ -150,59 +150,6 @@ pub async fn points(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiE
     .await
 }
 
-/// Requests per province of China.
-pub async fn china(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
-    geo(app, req, |app, request, group, searcher| {
-        let filter = analytics::range_filter(group, request.start_time, end_after(request.end_time));
-        let shares = analytics::provinces(searcher, app.engine.store.fields(), &filter, "CN", 100)?;
-        Ok(json!({ "data": items(&shares, "name") }))
-    })
-    .await
-}
-
-/// The body of a city request.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-struct CityRequest {
-    province: String,
-}
-
-/// Requests per city of a province of China.
-pub async fn china_city(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
-    let bytes = respond::read_body(req).await?;
-    let province =
-        serde_json::from_slice::<CityRequest>(&bytes).map_err(|e| ApiError::Validate(e.to_string()))?.province;
-    if province.is_empty() {
-        return Err(ApiError::Validate(
-            "Key: 'ChinaCityMapRequest.Province' Error:Field validation for 'Province' failed on the 'required' tag"
-                .into(),
-        ));
-    }
-    let request: AnalyticsRequest = serde_json::from_slice(&bytes).map_err(|e| ApiError::Validate(e.to_string()))?;
-    let group = resolve_group(app, &request.path, true)?;
-    access_only(app, &group)?;
-
-    let app = app.clone();
-    tokio::task::spawn_blocking(move || -> Result<Resp, ApiError> {
-        analytics::validate_range(request.start_time, request.end_time)?;
-        let searcher = app.engine.store.searcher();
-        let fields = app.engine.store.fields();
-        let filter = analytics::range_filter(&group, request.start_time, end_after(request.end_time));
-        let cities = analytics::cities(&searcher, fields, &filter, "CN", &province, 100)?;
-        let custom = app.engine.settings().uses_custom_mmdb();
-        let mut body = json!({ "data": items(&cities, "name"), "custom_mmdb_mode": custom });
-        if custom {
-            let top = analytics::city_labels(&searcher, fields, &filter, "CN", &province)?;
-            if !top.is_empty() {
-                body["top_data"] = json!(items(&top, "name"));
-            }
-        }
-        Ok(ok(&body))
-    })
-    .await
-    .map_err(ApiError::internal)?
-}
-
 /// The busiest countries.
 pub async fn stats(app: &Arc<App>, req: Request<Incoming>) -> Result<Resp, ApiError> {
     geo(app, req, |app, request, group, searcher| {

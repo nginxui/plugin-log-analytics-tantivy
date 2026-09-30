@@ -8,8 +8,7 @@ use tantivy::query::{BooleanQuery, Query};
 use tantivy::Searcher;
 
 use crate::collectors::{
-    top_terms, CityLabels, Dashboard, DashboardCollector, Layout, MinuteCollector, NumCounts, StatsCollector,
-    TermCounts,
+    top_terms, Dashboard, DashboardCollector, Layout, MinuteCollector, NumCounts, StatsCollector, TermCounts,
 };
 use crate::query::{self, Filter};
 use crate::rollup::{term_hash, GroupRollup, IdMap, IdSet};
@@ -508,18 +507,6 @@ pub fn countries(
     Ok(shares_of_counts(&count_terms(searcher, fields, filter, "region_code")?, size))
 }
 
-/// Requests per province of a country.
-pub fn provinces(
-    searcher: &Searcher,
-    fields: &Fields,
-    filter: &Filter,
-    country: &str,
-    size: usize,
-) -> Result<Vec<Share>, AnalyticsError> {
-    let filter = Filter { countries: vec![country.to_owned()], ..filter.clone() };
-    Ok(shares_of_counts(&count_terms(searcher, fields, &filter, "province")?, size))
-}
-
 /// Requests per subdivision of a country, keyed by ISO 3166-2 code. Both
 /// levels are counted, since the outlines of a country use one of them. The
 /// shares are of all requests of the country.
@@ -584,44 +571,8 @@ pub fn city_points(
         .collect())
 }
 
-/// Requests per city of a province.
-pub fn cities(
-    searcher: &Searcher,
-    fields: &Fields,
-    filter: &Filter,
-    country: &str,
-    province: &str,
-    size: usize,
-) -> Result<Vec<Share>, AnalyticsError> {
-    let filter = Filter { countries: vec![country.to_owned()], provinces: vec![province.to_owned()], ..filter.clone() };
-    Ok(shares_of_counts(&count_terms(searcher, fields, &filter, "city")?, size))
-}
-
 fn shares_of_counts(counts: &HashMap<String, u64>, size: usize) -> Vec<Share> {
     shares(counts, size)
-}
-
-/// The ten busiest city labels of a province, which carry the custom fields of
-/// the geo database. Their shares are of all labels, not of the top ten.
-pub fn city_labels(
-    searcher: &Searcher,
-    fields: &Fields,
-    filter: &Filter,
-    country: &str,
-    province: &str,
-) -> Result<Vec<Share>, AnalyticsError> {
-    let filter = Filter { countries: vec![country.to_owned()], provinces: vec![province.to_owned()], ..filter.clone() };
-    let q = query::build(fields, &filter);
-    let counts = searcher.search(q.as_ref(), &CityLabels)?;
-    let total: u64 = counts.values().sum();
-    Ok(top_terms(&counts, 10)
-        .into_iter()
-        .map(|(key, value)| Share {
-            percent: if total > 0 { value as f64 / total as f64 * 100.0 } else { 0.0 },
-            key,
-            value,
-        })
-        .collect())
 }
 
 // --------------------------------------------------------- entry statistics

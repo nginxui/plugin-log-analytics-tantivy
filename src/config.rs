@@ -10,7 +10,6 @@ use nginxui_plugin_sdk::protocol::Settings as RawSettings;
 pub const KEY_INTERVAL: &str = "incremental_index_interval";
 pub const KEY_MAX_TASKS: &str = "max_concurrent_index_tasks";
 pub const KEY_CUSTOM_MMDB: &str = "index_custom_mmdb";
-pub const KEY_MAP_PATH: &str = "geo_map_path";
 
 /// Minutes between two indexing rounds when the setting is empty.
 pub const DEFAULT_INTERVAL_MINUTES: i64 = 15;
@@ -24,8 +23,6 @@ pub struct Settings {
     pub max_tasks: i64,
     /// A custom IP location database, relative to the geo folder when not absolute.
     pub custom_mmdb: String,
-    /// Folder with the map outline files, relative to the data directory when not absolute.
-    pub map_path: String,
 }
 
 fn int_of(v: Option<&Value>) -> i64 {
@@ -48,7 +45,6 @@ impl Settings {
             interval_minutes: int_of(raw.get(KEY_INTERVAL)),
             max_tasks: int_of(raw.get(KEY_MAX_TASKS)),
             custom_mmdb: text_of(raw.get(KEY_CUSTOM_MMDB)),
-            map_path: text_of(raw.get(KEY_MAP_PATH)),
         }
     }
 
@@ -62,9 +58,6 @@ impl Settings {
         !self.custom_mmdb.is_empty()
     }
 }
-
-/// Folder of the map files below the data directory when none is set.
-pub const DEFAULT_MAP_DIR: &str = "maps";
 
 /// Where the plugin keeps its files.
 #[derive(Debug, Clone)]
@@ -88,16 +81,6 @@ impl Dirs {
     pub fn geolite(&self) -> PathBuf {
         self.data.join("geolite")
     }
-
-    pub fn maps(&self, settings: &Settings) -> PathBuf {
-        let base = if settings.map_path.is_empty() { DEFAULT_MAP_DIR } else { settings.map_path.as_str() };
-        let path = Path::new(base);
-        if path.is_absolute() {
-            PathBuf::from(crate::logs::clean_path(base))
-        } else {
-            PathBuf::from(crate::logs::clean_path(&self.data.join(path).to_string_lossy()))
-        }
-    }
 }
 
 #[cfg(test)]
@@ -113,7 +96,7 @@ mod tests {
     fn settings_accept_numbers_and_strings() {
         let s = Settings::parse(&raw(json!({
             "incremental_index_interval": "30", "max_concurrent_index_tasks": 3.0,
-            "index_custom_mmdb": " my.mmdb ", "geo_map_path": "", "unknown": 1
+            "index_custom_mmdb": " my.mmdb ", "unknown": 1
         })));
         assert_eq!(s.interval_minutes, 30);
         assert_eq!(s.max_tasks, 3);
@@ -129,13 +112,9 @@ mod tests {
     }
 
     #[test]
-    fn map_folder_is_relative_to_the_data_directory() {
+    fn folders_are_below_the_data_directory() {
         let dirs = Dirs::new("/data/p");
-        assert_eq!(dirs.maps(&Settings::default()), Path::new("/data/p/maps"));
-        let abs = Settings { map_path: "/srv/maps".into(), ..Default::default() };
-        assert_eq!(dirs.maps(&abs), Path::new("/srv/maps"));
-        let rel = Settings { map_path: "m/x".into(), ..Default::default() };
-        assert_eq!(dirs.maps(&rel), Path::new("/data/p/m/x"));
         assert_eq!(dirs.index(), Path::new("/data/p/index"));
+        assert_eq!(dirs.geolite(), Path::new("/data/p/geolite"));
     }
 }

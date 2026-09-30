@@ -102,7 +102,7 @@ async fn the_parser_of_types_reads_the_declarations() {
     assert!(types["AccessLogEntry"].contains_key("browser_version"));
     assert!(types["PreflightResponse"]["time_range"].optional);
     assert!(!types["DashboardSummary"]["total_uv"].optional);
-    assert!(types["ChinaCityMapRequest"].contains_key("province"));
+    assert!(types["RegionMapData"].contains_key("code"));
 }
 
 #[tokio::test]
@@ -160,19 +160,15 @@ async fn maps_preflight_and_geolite_follow_the_types() {
     check_kind(&types, "WorldMapData[]", &body["data"], "world.data");
     assert!(body["data"].as_array().unwrap().iter().any(|i| i["code"] == "US"));
 
-    let (code, body) = api.post("/geo/china", range.clone()).await;
-    assert_eq!(code, 200);
-    check_kind(&types, "ChinaMapData[]", &body["data"], "china.data");
+    let mut country = range.clone();
+    country["country"] = json!("US");
+    let (code, body) = api.post("/geo/regions", country).await;
+    assert_eq!(code, 200, "{body}");
+    check_kind(&types, "RegionMapData[]", &body["data"], "regions.data");
 
-    let mut city = range.clone();
-    city["province"] = json!("广东");
-    let (code, body) = api.post("/geo/china/city", city).await;
-    assert_eq!(code, 200);
-    check_kind(&types, "CityData[]", &body["data"], "city.data");
-    assert_eq!(body["custom_mmdb_mode"], false);
-    let (code, body) = api.post("/geo/china/city", range.clone()).await;
-    assert_eq!(code, 406);
-    assert_eq!(body["scope"], "validate");
+    let (code, body) = api.post("/geo/points", range.clone()).await;
+    assert_eq!(code, 200, "{body}");
+    check_kind(&types, "CityPointData[]", &body["data"], "points.data");
 
     let (code, body) = api.post("/geo/stats", json!({"path": api.group(), "limit": 2})).await;
     assert_eq!(code, 200);
@@ -237,16 +233,6 @@ async fn errors_warm_rebuild_and_boundaries() {
 
     let (code, body) = api.post("/warm", json!({})).await;
     assert_eq!((code, &body["status"]), (202, &json!("warming")));
-
-    let (code, body) = api.get("/geo/boundary/110000_full.json").await;
-    assert_eq!((code, body["message"].as_str()), (404, Some("map file not found")));
-    let (code, _) = api.get("/geo/boundary/evil.json").await;
-    assert_eq!(code, 400);
-    let maps = api.root.path().join("data").join("maps");
-    std::fs::create_dir_all(&maps).unwrap();
-    std::fs::write(maps.join("110000_full.json"), r#"{"type":"FeatureCollection"}"#).unwrap();
-    let (code, body) = api.get("/geo/boundary/110000_full.json").await;
-    assert_eq!((code, body["type"].as_str()), (200, Some("FeatureCollection")));
 
     let (code, _) = api.get("/nothing").await;
     assert_eq!(code, 404);
