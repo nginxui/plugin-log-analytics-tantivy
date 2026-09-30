@@ -264,6 +264,8 @@ async fn where_the_memory_of_an_indexing_round_goes() {
     ON.store(false, Ordering::SeqCst);
 
     eprintln!("\nindexed {} documents in {:.1} s", report.docs, started.elapsed().as_secs_f64());
+    let segments: Vec<u32> = engine.store.searcher().segment_readers().iter().map(|r| r.num_docs()).collect();
+    eprintln!("segments after the round: {segments:?}");
     eprintln!("timeline (s, live MB, RssAnon MB): {timeline:?}");
     if let Some(s) = &peak_live {
         print("highest live heap", s);
