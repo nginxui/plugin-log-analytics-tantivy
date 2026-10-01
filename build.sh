@@ -9,8 +9,8 @@
 #
 # Every platform gets its own package, dist/<id>-<version>-<os>-<arch>.tar.gz,
 # with one executable and a plugin.json whose server.executables names only that
-# platform (plugin spec PKG-12). A <archive>.sha256 file sits next to each
-# archive for the catalog.
+# platform, as a per-platform package must. A <archive>.sha256 file sits next
+# to each archive for the catalog.
 #
 # The browser bundle comes from plugin-log-analytics-webapp, which builds it
 # for both log analytics plugins. webapp.lock names the release version. The
