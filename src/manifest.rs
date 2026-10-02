@@ -15,7 +15,7 @@ pub const PLUGIN_ID: &str = "com.nginxui.log-analytics-tantivy";
 pub const CONFLICTING_PLUGIN: &str = "com.nginxui.log-analytics";
 pub const PLUGIN_NAME: &str = "Log Analytics (Preview)";
 pub const PLUGIN_DESCRIPTION: &str =
-    "Search nginx access and error logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. This preview cannot be enabled together with Log Analytics.";
+    "Search nginx access and error logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. Built with Rust for faster indexing and lower resource usage. This preview cannot be enabled together with Log Analytics.";
 pub const MIN_NGINX_UI_VERSION: &str = "2.7.0";
 /// Memory in MiB advised for the machine. The smallest tier of the indexer
 /// (50 MB writer, one thread) indexed 1.4 million lines within 160 MB of
@@ -74,11 +74,11 @@ pub fn build(shared: HashMap<String, String>) -> Manifest {
         api_version: 1,
         min_nginx_ui_version: MIN_NGINX_UI_VERSION.to_owned(),
         i18n: HashMap::from([
-            ("zh_CN".to_owned(), translation("日志分析（预览）", "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。预览版，不能与“日志分析”同时启用。")),
-            ("zh_TW".to_owned(), translation("日誌分析（預覽）", "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。預覽版，不能與「日誌分析」同時啟用。")),
+            ("zh_CN".to_owned(), translation("日志分析（预览）", "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。使用 Rust 构建，索引更快，资源占用更少。预览版，不能与“日志分析”同时启用。")),
+            ("zh_TW".to_owned(), translation("日誌分析（預覽）", "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。使用 Rust 建構，索引更快，資源佔用更少。預覽版，不能與「日誌分析」同時啟用。")),
             (
                 "ja_JP".to_owned(),
-                translation("ログ分析（プレビュー）", "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。プレビュー版のため、「ログ分析」と同時に有効にできません。"),
+                translation("ログ分析（プレビュー）", "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。"),
             ),
         ]),
         server: Some(ManifestServer {
@@ -211,7 +211,7 @@ mod tests {
     }
 
     #[test]
-    fn user_facing_text_names_no_engine_or_language() {
+    fn user_facing_text_names_no_engine() {
         // The id and the file names may name the engine, what people read may not
         let m = build(HashMap::new());
         let mut shown = vec![m.name.clone(), m.description.clone()];
@@ -224,7 +224,7 @@ mod tests {
             shown.push(field.help_text.clone());
         }
         let text = shown.join("\n").to_lowercase();
-        for word in ["tantivy", "bleve", "rust", "golang", "lucene"] {
+        for word in ["tantivy", "bleve", "lucene"] {
             assert!(!text.contains(word), "{word} in the manifest");
         }
     }

@@ -2,22 +2,22 @@
   "id": "com.nginxui.log-analytics-tantivy",
   "name": "Log Analytics (Preview)",
   "version": "0.1.0-beta.1",
-  "description": "Search nginx access and error logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. This preview cannot be enabled together with Log Analytics.",
+  "description": "Search nginx access and error logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. Built with Rust for faster indexing and lower resource usage. This preview cannot be enabled together with Log Analytics.",
   "icon_path": "webapp/dist/icon.svg",
   "api_version": 1,
   "min_nginx_ui_version": "2.7.0",
   "i18n": {
     "ja_JP": {
       "name": "ログ分析（プレビュー）",
-      "description": "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。プレビュー版のため、「ログ分析」と同時に有効にできません。"
+      "description": "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。"
     },
     "zh_CN": {
       "name": "日志分析（预览）",
-      "description": "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。预览版，不能与“日志分析”同时启用。"
+      "description": "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。使用 Rust 构建，索引更快，资源占用更少。预览版，不能与“日志分析”同时启用。"
     },
     "zh_TW": {
       "name": "日誌分析（預覽）",
-      "description": "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。預覽版，不能與「日誌分析」同時啟用。"
+      "description": "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。使用 Rust 建構，索引更快，資源佔用更少。預覽版，不能與「日誌分析」同時啟用。"
     }
   },
   "server": {
