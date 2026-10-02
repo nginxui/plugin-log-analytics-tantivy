@@ -153,9 +153,10 @@ executables natively on GitHub runners, packages them with
 `build.sh --prebuilt`, signs `plugin.sums` with the key of the `release`
 environment (`PLUGIN_SIGNING_KEY`, `PLUGIN_SIGNING_KEY_PASSWORD`), verifies the
 archives against the `PLUGIN_SIGNING_PUBLIC_KEY` variable and publishes the
-archives and their `.sha256` files as a GitHub release. The notes come from the
-matching section of `CHANGELOG.md`, and a version with a prerelease part such
-as `0.1.0-beta.1` is marked as a prerelease.
+archives and their `.sha256` files as a GitHub release. The notes list the features and fixes since the previous tag, generated from
+the commit messages by git-cliff (`cliff.toml`).
+A version with a prerelease part such as `0.1.0-beta.1` is marked as a
+prerelease.
 
 ## Webapp
 
