@@ -126,9 +126,10 @@ if [[ -z "${WEBAPP_ARCHIVE}" && -f "../plugin-log-analytics-webapp/release/${WEB
   WEBAPP_ARCHIVE="../plugin-log-analytics-webapp/release/${WEBAPP_NAME}"
 fi
 if [[ -z "${WEBAPP_ARCHIVE}" ]]; then
-  WEBAPP_ARCHIVE="${DIST}/${WEBAPP_NAME}"
+  # Kept apart from the packages, dist/*.tar.gz is what a release publishes.
+  WEBAPP_ARCHIVE="${DIST}/cache/${WEBAPP_NAME}"
   url="https://github.com/nginxui/plugin-log-analytics-webapp/releases/download/v${WEBAPP_VERSION}/${WEBAPP_NAME}"
-  mkdir -p "${DIST}"
+  mkdir -p "${DIST}/cache"
   curl -fsSL -o "${WEBAPP_ARCHIVE}" "${url}"
   # The release publishes the checksum next to the archive
   expected="$(curl -fsSL "${url}.sha256" | cut -d' ' -f1)"
