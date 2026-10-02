@@ -66,7 +66,7 @@ jobs:
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: plugin-log-analytics-tantivy
           persist-credentials: false
@@ -100,7 +100,7 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/out"
           cp "target/${TARGET}/release/log-analytics-tantivy${ext}" "${RUNNER_TEMP}/out/log-analytics-tantivy-${KEY}${ext}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.key }}
           path: ${{ runner.temp }}/out/*
@@ -120,7 +120,7 @@ jobs:
       run:
         working-directory: plugin-log-analytics-tantivy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: plugin-log-analytics-tantivy
           # git-cliff reads the commits since the previous tag.
@@ -153,7 +153,7 @@ jobs:
           cargo run --locked --release --quiet --bin manifest -- -out "${RUNNER_TEMP}/plugin.json" >/dev/null
           diff -u plugin.json "${RUNNER_TEMP}/plugin.json"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: binary-*
           merge-multiple: true
@@ -230,7 +230,7 @@ jobs:
             *) echo "prerelease=false" >>"${GITHUB_OUTPUT}" ;;
           esac
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-files
           path: |
@@ -246,7 +246,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-files
           path: release

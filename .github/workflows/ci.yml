@@ -26,7 +26,7 @@ jobs:
       run:
         working-directory: plugin-log-analytics-tantivy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: plugin-log-analytics-tantivy
 
@@ -36,7 +36,7 @@ jobs:
         id: webapp
         run: echo "version=$(sed -n 's/^version=//p' webapp.lock)" >> "${GITHUB_OUTPUT}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: nginxui/plugin-log-analytics-webapp
           ref: v${{ steps.webapp.outputs.version }}
@@ -64,7 +64,7 @@ jobs:
       run:
         working-directory: plugin-log-analytics-tantivy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: plugin-log-analytics-tantivy
 
