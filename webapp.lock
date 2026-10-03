@@ -1,3 +1,3 @@
 # The plugin-log-analytics-webapp release this plugin packages. Change it after
 # a webapp release; a local build takes the archive of a sibling checkout.
-version=0.1.0
+version=0.1.1
