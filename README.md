@@ -125,7 +125,6 @@ Everything lives in the plugin data directory: `index/` holds the index,
 cargo test                                   # unit and integration tests
 cargo test --release --test perf_dataset -- --ignored --nocapture
 cargo clippy --all-targets -- -D warnings
-cargo run --bin manifest                     # regenerate plugin.json
 ./build.sh --webapp-only                     # take the webapp into webapp/dist
 ./build.sh                                   # the packages in dist/
 ./build.sh --prebuilt DIR                    # package executables built elsewhere
@@ -146,6 +145,10 @@ nginxui-plugin-sdk = { path = "../plugin-sdk-rust" }
 ```
 
 ## Releases
+
+`plugin.json` is written by hand. After a webapp update, copy the bundle
+paths, chunks and `shared` ranges from `webapp/dist/manifest.webapp.json`
+into it; the tests compare them.
 
 Pushing a tag `vX.Y.Z` that matches the version in `plugin.json` and
 `Cargo.toml` runs `.github/workflows/release.yml`. It builds the six

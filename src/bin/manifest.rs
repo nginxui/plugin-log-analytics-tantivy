@@ -1,15 +1,11 @@
-//! Writes `plugin.json`, or the manifest of one platform package.
+//! Writes the manifest of one platform package: `plugin.json` narrowed to
+//! that platform's executable. `plugin.json` itself is written by hand.
 //!
-//!     cargo run --bin manifest
 //!     cargo run --bin manifest -- -platform linux-amd64 -out dist/stage/linux-amd64/plugin.json
 
 use std::path::{Path, PathBuf};
 
 use plugin_log_analytics_tantivy::manifest;
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-}
 
 fn run() -> Result<(), String> {
     let mut platform = String::new();
@@ -25,22 +21,17 @@ fn run() -> Result<(), String> {
         };
         *slot = args.next().ok_or_else(|| format!("{arg} needs a value"))?;
     }
+    if platform.is_empty() || output.is_empty() {
+        return Err("-platform and -out are required, plugin.json is written by hand".into());
+    }
 
-    let root = root();
-    let text = if platform.is_empty() {
-        let fragment = std::fs::read_to_string(root.join("webapp/dist/manifest.webapp.json")).unwrap_or_default();
-        if output.is_empty() {
-            output = root.join("plugin.json").to_string_lossy().into_owned();
-        }
-        manifest::render(&manifest::build(manifest::shared_from_fragment(&fragment)))
+    let source = if input.is_empty() {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugin.json")
     } else {
-        if output.is_empty() {
-            return Err("-platform needs -out, the committed plugin.json keeps every platform".into());
-        }
-        let source = if input.is_empty() { root.join("plugin.json") } else { PathBuf::from(&input) };
-        let source = std::fs::read_to_string(&source).map_err(|e| format!("{}: {e}", source.display()))?;
-        manifest::narrow(&source, &platform)?
+        PathBuf::from(&input)
     };
+    let source = std::fs::read_to_string(&source).map_err(|e| format!("{}: {e}", source.display()))?;
+    let text = manifest::narrow(&source, &platform)?;
     std::fs::write(Path::new(&output), &text).map_err(|e| format!("{output}: {e}"))?;
     println!("wrote {output} ({} bytes)", text.len());
     Ok(())

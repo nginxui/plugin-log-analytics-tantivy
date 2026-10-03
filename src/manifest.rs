@@ -1,173 +1,12 @@
-//! The manifest of the plugin. `plugin.json` is generated from here with
-//! `cargo run --bin manifest`, and the packaging narrows it to one platform
-//! per package.
+//! `plugin.json` is written by hand. The packaging narrows it to one platform
+//! per package with `narrow`, through `cargo run --bin manifest`. The tests
+//! below keep it in line with the code, Cargo.toml and the webapp build.
 
-use std::collections::HashMap;
+use serde_json::Value;
 
-use nginxui_plugin_sdk::protocol::{
-    capability, event, lifecycle, permission, Manifest, ManifestHttp, ManifestI18n, ManifestResources, ManifestServer,
-    ManifestWebapp, SettingsField, SettingsSchema,
-};
-use serde_json::{json, Value};
-
-pub const PLUGIN_ID: &str = "com.nginxui.log-analytics-tantivy";
-/// The plugin of the same pages and routes this one replaces.
-pub const CONFLICTING_PLUGIN: &str = "com.nginxui.log-analytics";
-pub const PLUGIN_NAME: &str = "Log Analytics (Preview)";
-pub const PLUGIN_DESCRIPTION: &str =
-    "Search nginx access and error logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. Built with Rust for faster indexing and lower resource usage. This preview cannot be enabled together with Log Analytics.";
-pub const MIN_NGINX_UI_VERSION: &str = "2.7.0";
-/// Memory in MiB advised for the machine. The smallest tier of the indexer
-/// (50 MB writer, one thread) indexed 1.4 million lines within 160 MB of
-/// resident memory on Linux, the rest is room for the server, the page cache
-/// of the index and a search or two.
-pub const RECOMMENDED_MEMORY_MB: i32 = 256;
-
-/// Prefix of the packaged executables.
-pub const BINARY_PREFIX: &str = "log-analytics-tantivy";
-
-pub const BUNDLE_PATH: &str = "webapp/dist/main.js";
-pub const STYLE_PATH: &str = "webapp/dist/style.css";
-pub const ICON_PATH: &str = "webapp/dist/icon.svg";
-
-/// Platforms the plugin is packaged for, in manifest order.
-pub const PLATFORMS: [(&str, &str); 6] = [
-    ("linux", "amd64"),
-    ("linux", "arm64"),
-    ("darwin", "amd64"),
-    ("darwin", "arm64"),
-    ("windows", "amd64"),
-    ("windows", "arm64"),
-];
-
-/// Package relative path of the executable of a platform.
-pub fn executable_path(os: &str, arch: &str) -> String {
-    let ext = if os == "windows" { ".exe" } else { "" };
-    format!("server/dist/{BINARY_PREFIX}-{os}-{arch}{ext}")
-}
-
-fn translation(name: &str, description: &str) -> ManifestI18n {
-    ManifestI18n { name: name.to_owned(), description: description.to_owned() }
-}
-
-fn setting(key: &str, kind: &str, name: &str, help: &str, default: Value) -> SettingsField {
-    SettingsField {
-        key: key.to_owned(),
-        r#type: kind.to_owned(),
-        display_name: name.to_owned(),
-        help_text: help.to_owned(),
-        default,
-        ..Default::default()
-    }
-}
-
-/// Builds the manifest. `shared` is the map of shared libraries the browser
-/// bundle was built against, it is empty until the bundle is built.
-pub fn build(shared: HashMap<String, String>) -> Manifest {
-    let executables = PLATFORMS.iter().map(|(os, arch)| (format!("{os}-{arch}"), executable_path(os, arch))).collect();
-    Manifest {
-        id: PLUGIN_ID.to_owned(),
-        name: PLUGIN_NAME.to_owned(),
-        version: env!("CARGO_PKG_VERSION").to_owned(),
-        description: PLUGIN_DESCRIPTION.to_owned(),
-        icon_path: ICON_PATH.to_owned(),
-        api_version: 1,
-        min_nginx_ui_version: MIN_NGINX_UI_VERSION.to_owned(),
-        i18n: HashMap::from([
-            ("zh_CN".to_owned(), translation("日志分析（预览）", "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。使用 Rust 构建，索引更快，资源占用更少。预览版，不能与“日志分析”同时启用。")),
-            ("zh_TW".to_owned(), translation("日誌分析（預覽）", "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。使用 Rust 建構，索引更快，資源佔用更少。預覽版，不能與「日誌分析」同時啟用。")),
-            (
-                "ja_JP".to_owned(),
-                translation("ログ分析（プレビュー）", "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。"),
-            ),
-        ]),
-        server: Some(ManifestServer {
-            executables,
-            // The plugin indexes on a schedule, so it stays up
-            lifecycle: lifecycle::RESIDENT.to_owned(),
-            resources: Some(ManifestResources { recommended_memory_mb: RECOMMENDED_MEMORY_MB, ..Default::default() }),
-            ..Default::default()
-        }),
-        webapp: Some(ManifestWebapp {
-            bundle_path: BUNDLE_PATH.to_owned(),
-            style_path: STYLE_PATH.to_owned(),
-            shared,
-            chunks: HashMap::from([
-                ("dashboard".to_owned(), "webapp/dist/chunks/dashboard.js".to_owned()),
-                ("search".to_owned(), "webapp/dist/chunks/search.js".to_owned()),
-            ]),
-            ..Default::default()
-        }),
-        capabilities: vec![capability::HTTP.to_owned()],
-        permissions: vec![
-            // The nginx log files, and the event when their set changes
-            permission::LOG_FILES.to_owned(),
-            // The download of the IP location database
-            permission::NETWORK.to_owned(),
-        ],
-        // Both plugins serve the same pages, only one of them runs
-        conflicts: vec![CONFLICTING_PLUGIN.to_owned()],
-        events: vec![event::LOG_PATHS_CHANGED.to_owned()],
-        network_hosts: vec!["cloud.nginxui.com".to_owned()],
-        // A socket keeps websockets and streaming responses possible
-        http: Some(ManifestHttp { listen: "unix".to_owned() }),
-        settings_schema: Some(SettingsSchema {
-            settings: vec![
-                setting(
-                    "incremental_index_interval",
-                    "number",
-                    "Indexing interval (minutes)",
-                    "How often the logs are checked for new lines. Zero or empty means 15 minutes.",
-                    json!(15),
-                ),
-                setting(
-                    "max_concurrent_index_tasks",
-                    "number",
-                    "Logs indexed at once",
-                    "The most log files indexed at the same time. A lower number uses less memory. Zero picks a value from the available CPUs.",
-                    json!(0),
-                ),
-                setting(
-                    "index_custom_mmdb",
-                    "text",
-                    "Custom IP location database",
-                    "Path of your own IP location database file. Empty uses the downloaded one.",
-                    Value::Null,
-                ),
-            ],
-            ..Default::default()
-        }),
-        ..Default::default()
-    }
-}
-
-/// Sorts the keys of the objects that come from hash maps, so the output does
-/// not change from run to run. The fields of the structures keep their order.
-fn sort_maps(value: &mut Value) {
-    fn sort(v: &mut Value) {
-        if let Value::Object(map) = v {
-            let mut entries: Vec<(String, Value)> = std::mem::take(map).into_iter().collect();
-            entries.sort_by(|a, b| a.0.cmp(&b.0));
-            map.extend(entries);
-        }
-    }
-    sort(&mut value["i18n"]);
-    sort(&mut value["server"]["executables"]);
-    sort(&mut value["webapp"]["shared"]);
-    sort(&mut value["webapp"]["chunks"]);
-}
-
-/// The committed layout: two space indentation and a trailing newline.
-pub fn render(manifest: &Manifest) -> String {
-    let mut value = serde_json::to_value(manifest).expect("manifest serializes");
-    sort_maps(&mut value);
-    let mut text = serde_json::to_string_pretty(&value).expect("manifest renders");
-    text.push('\n');
-    text
-}
-
-/// Narrows a rendered manifest to one `<os>-<arch>` executable. A per platform
-/// package declares exactly the platform it ships.
+/// Narrows a manifest to one `<os>-<arch>` executable. A per platform package
+/// declares exactly the platform it ships. Every other member keeps its order
+/// and value, so the narrowing works with any member the contract adds.
 pub fn narrow(text: &str, platform: &str) -> Result<String, String> {
     let mut value: Value = serde_json::from_str(text).map_err(|e| format!("decode manifest: {e}"))?;
     let executables = value
@@ -181,47 +20,69 @@ pub fn narrow(text: &str, platform: &str) -> Result<String, String> {
         .ok_or_else(|| format!("the manifest declares no executable for {platform}"))?;
     executables.clear();
     executables.insert(platform.to_owned(), path);
-    let mut out = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-    out.push('\n');
-    Ok(out)
+    layout(&value)
 }
 
-/// The shared libraries the bundle was built against, read from the fragment
-/// the bundler writes. A missing file gives an empty map.
-pub fn shared_from_fragment(text: &str) -> HashMap<String, String> {
-    serde_json::from_str::<Value>(text)
-        .ok()
-        .and_then(|v| v.get("shared").cloned())
-        .and_then(|s| serde_json::from_value(s).ok())
-        .unwrap_or_default()
+/// The committed layout: two space indentation and a trailing newline.
+fn layout(value: &Value) -> Result<String, String> {
+    let mut text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    text.push('\n');
+    Ok(text)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const PLUGIN_JSON: &str = include_str!("../plugin.json");
+
+    fn manifest() -> Value {
+        serde_json::from_str(PLUGIN_JSON).expect("plugin.json decodes")
+    }
+
+    fn texts(value: &Value) -> Vec<String> {
+        value.as_object().map(|o| o.values().filter_map(Value::as_str).map(str::to_owned).collect()).unwrap_or_default()
+    }
+
+    /// Package relative path build.sh gives the executable of a platform.
+    fn executable_path(platform: &str) -> String {
+        let ext = if platform.starts_with("windows-") { ".exe" } else { "" };
+        format!("server/dist/log-analytics-tantivy-{platform}{ext}")
+    }
+
     #[test]
-    fn identity_and_conflict() {
-        let m = build(HashMap::new());
-        assert_eq!(m.id, "com.nginxui.log-analytics-tantivy");
-        assert_eq!(m.version, "0.1.0-beta.1");
-        assert_eq!(m.conflicts, ["com.nginxui.log-analytics"]);
-        assert_eq!(m.capabilities, ["http"]);
-        assert_eq!(m.server.unwrap().resources.unwrap().recommended_memory_mb, RECOMMENDED_MEMORY_MB);
+    fn plugin_json_is_laid_out() {
+        assert_eq!(layout(&manifest()).unwrap(), PLUGIN_JSON, "plugin.json is not laid out with two space indentation");
+    }
+
+    #[test]
+    fn identity_matches_the_crate() {
+        let m = manifest();
+        assert_eq!(m["id"], "com.nginxui.log-analytics-tantivy");
+        assert_eq!(m["version"], env!("CARGO_PKG_VERSION"), "plugin.json and Cargo.toml name different versions");
+        assert_eq!(m["conflicts"], serde_json::json!(["com.nginxui.log-analytics"]));
+        assert_eq!(m["capabilities"], serde_json::json!(["http"]));
+        assert_eq!(m["server"]["lifecycle"], "resident");
+        for (platform, path) in m["server"]["executables"].as_object().unwrap() {
+            assert_eq!(path, &executable_path(platform), "executable of {platform}");
+        }
     }
 
     #[test]
     fn user_facing_text_names_no_engine() {
         // The id and the file names may name the engine, what people read may not
-        let m = build(HashMap::new());
-        let mut shown = vec![m.name.clone(), m.description.clone()];
-        for t in m.i18n.values() {
-            shown.push(t.name.clone());
-            shown.push(t.description.clone());
+        let m = manifest();
+        let mut shown = vec![
+            m["name"].as_str().unwrap_or_default().to_owned(),
+            m["description"].as_str().unwrap_or_default().to_owned(),
+        ];
+        shown.extend(texts(&m["permission_reasons"]));
+        for translated in m["i18n"].as_object().into_iter().flat_map(|o| o.values()) {
+            shown.extend(texts(translated));
+            shown.extend(texts(&translated["permission_reasons"]));
         }
-        for field in m.settings_schema.iter().flat_map(|s| &s.settings) {
-            shown.push(field.display_name.clone());
-            shown.push(field.help_text.clone());
+        for field in m["settings_schema"]["settings"].as_array().into_iter().flatten() {
+            shown.extend(texts(field));
         }
         let text = shown.join("\n").to_lowercase();
         for word in ["tantivy", "bleve", "lucene"] {
@@ -230,29 +91,54 @@ mod tests {
     }
 
     #[test]
-    fn rendering_is_stable_and_narrowing_keeps_one_platform() {
-        let shared = HashMap::from([("vue".to_owned(), ">=3".to_owned()), ("pinia".to_owned(), ">=4".to_owned())]);
-        let a = render(&build(shared.clone()));
-        assert_eq!(a, render(&build(shared)));
-        assert!(a.starts_with("{\n  \"id\": \"com.nginxui.log-analytics-tantivy\""));
-        assert!(a.find("\"pinia\"").unwrap() < a.find("\"vue\"").unwrap());
-
-        let narrowed = narrow(&a, "linux-amd64").unwrap();
-        let v: Value = serde_json::from_str(&narrowed).unwrap();
-        let exes = v["server"]["executables"].as_object().unwrap();
-        assert_eq!(exes.len(), 1);
-        assert_eq!(exes["linux-amd64"], "server/dist/log-analytics-tantivy-linux-amd64");
-        assert!(narrow(&a, "plan9-amd64").is_err());
-        assert_eq!(executable_path("windows", "arm64"), "server/dist/log-analytics-tantivy-windows-arm64.exe");
+    fn permission_reasons_name_requested_permissions() {
+        let m = manifest();
+        let permissions: Vec<&str> = m["permissions"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        let mut blocks = vec![("permission_reasons".to_owned(), &m["permission_reasons"])];
+        for (locale, translated) in m["i18n"].as_object().into_iter().flatten() {
+            blocks.push((format!("i18n.{locale}.permission_reasons"), &translated["permission_reasons"]));
+        }
+        for (where_, reasons) in blocks {
+            for permission in reasons.as_object().into_iter().flat_map(|o| o.keys()) {
+                assert!(
+                    permissions.contains(&permission.as_str()),
+                    "{where_} explains {permission}, which is not requested"
+                );
+            }
+        }
     }
 
     #[test]
-    fn the_committed_manifest_is_the_generated_one() {
-        let Ok(committed) = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/plugin.json")) else {
+    fn narrowing_keeps_one_platform_and_everything_else() {
+        let m = manifest();
+        for (platform, path) in m["server"]["executables"].as_object().unwrap() {
+            let narrowed: Value = serde_json::from_str(&narrow(PLUGIN_JSON, platform).unwrap()).unwrap();
+            let exes = narrowed["server"]["executables"].as_object().unwrap();
+            assert_eq!(exes.len(), 1);
+            assert_eq!(&exes[platform], path);
+
+            let mut restored = narrowed.clone();
+            restored["server"]["executables"] = m["server"]["executables"].clone();
+            assert_eq!(layout(&restored).unwrap(), PLUGIN_JSON, "{platform} changes more than the executables");
+        }
+        assert!(narrow(PLUGIN_JSON, "plan9-amd64").is_err());
+    }
+
+    /// The webapp build writes its paths and the shared libraries it expects
+    /// in a fragment. plugin.json has to name the same.
+    #[test]
+    fn manifest_matches_the_webapp_fragment() {
+        let root = env!("CARGO_MANIFEST_DIR");
+        let Ok(text) = std::fs::read_to_string(format!("{root}/webapp/dist/manifest.webapp.json")) else {
             return;
         };
-        let parsed: Manifest = serde_json::from_str(&committed).unwrap();
-        let rebuilt = build(parsed.webapp.clone().map(|w| w.shared).unwrap_or_default());
-        assert_eq!(parsed, rebuilt, "run `cargo run --bin manifest` to regenerate plugin.json");
+        let fragment: Value = serde_json::from_str(&text).unwrap();
+        let webapp = &manifest()["webapp"];
+        for key in ["bundle_path", "style_path", "chunks", "shared"] {
+            assert_eq!(
+                webapp[key], fragment[key],
+                "webapp.{key} differs from the webapp build, copy it into plugin.json"
+            );
+        }
     }
 }

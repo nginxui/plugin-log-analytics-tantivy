@@ -160,8 +160,9 @@ if [[ "${WEBAPP_ONLY}" == 1 ]]; then
   exit 0
 fi
 
-# The manifest is generated from the code and the bundle, see src/manifest.rs.
-cargo run --quiet --release --bin manifest
+# plugin.json is written by hand, the manifest tool narrows it to one
+# platform per package, see src/manifest.rs.
+cargo build --quiet --release --bin manifest
 MANIFEST_TOOL="${TARGET_DIR}/release/manifest"
 
 VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' plugin.json | head -n 1)"

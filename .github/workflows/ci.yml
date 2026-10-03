@@ -79,10 +79,16 @@ jobs:
       - name: Take the webapp release
         run: ./build.sh --webapp-only
 
-      # plugin.json is committed and the catalog reads it from the release
-      # tag, so it must be what the manifest binary generates from the code
-      # and the webapp fragment of the release.
-      - name: plugin.json is up to date
+      # plugin.json is written by hand and the catalog reads it from the
+      # release tag, so it must follow the contract.
+      - name: plugin.json follows the plugin-spec schema
         run: |
-          cargo run --locked --quiet --bin manifest -- -out "${RUNNER_TEMP}/plugin.json" >/dev/null
-          diff -u plugin.json "${RUNNER_TEMP}/plugin.json"
+          curl -fsSL -o "${RUNNER_TEMP}/plugin.schema.json" \
+            https://raw.githubusercontent.com/nginxui/plugin-spec/main/schema/plugin.schema.json
+          npx --yes -p ajv-cli@5 -p ajv-formats@3 ajv validate --spec=draft2020 --strict=false \
+            -c ajv-formats -s "${RUNNER_TEMP}/plugin.schema.json" -d plugin.json
+
+      # With the webapp release in place, the tests compare plugin.json with
+      # the paths and shared libraries of its build.
+      - name: plugin.json matches the webapp release
+        run: cargo test --locked --lib manifest
