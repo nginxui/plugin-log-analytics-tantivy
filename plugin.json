@@ -9,15 +9,27 @@
   "i18n": {
     "ja_JP": {
       "name": "ログ分析（プレビュー）",
-      "description": "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。"
+      "description": "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。",
+      "permission_reasons": {
+        "log.files": "検索とダッシュボードのために、サイトのアクセスログとエラーログをインデックスします。",
+        "network": "ダウンロードを選んだときに IP 位置情報データベースを取得します。"
+      }
     },
     "zh_CN": {
       "name": "日志分析（预览）",
-      "description": "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。使用 Rust 构建，索引更快，资源占用更少。预览版，不能与“日志分析”同时启用。"
+      "description": "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。使用 Rust 构建，索引更快，资源占用更少。预览版，不能与“日志分析”同时启用。",
+      "permission_reasons": {
+        "log.files": "索引站点的访问日志和错误日志，用于搜索和面板。",
+        "network": "在你选择下载时获取 IP 归属地数据库。"
+      }
     },
     "zh_TW": {
       "name": "日誌分析（預覽）",
-      "description": "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。使用 Rust 建構，索引更快，資源佔用更少。預覽版，不能與「日誌分析」同時啟用。"
+      "description": "對 Nginx 存取日誌和錯誤日誌做結構化搜尋和依欄位篩選，在面板和訪客地圖上檢視流量。使用 Rust 建構，索引更快，資源佔用更少。預覽版，不能與「日誌分析」同時啟用。",
+      "permission_reasons": {
+        "log.files": "索引站點的存取日誌和錯誤日誌，用於搜尋和面板。",
+        "network": "在你選擇下載時取得 IP 位置資料庫。"
+      }
     }
   },
   "server": {
@@ -65,6 +77,10 @@
   "network_hosts": [
     "cloud.nginxui.com"
   ],
+  "permission_reasons": {
+    "log.files": "To index the access and error logs of your sites for search and the dashboard.",
+    "network": "To download the IP location database when you choose to."
+  },
   "http": {
     "listen": "unix"
   },
