@@ -30,15 +30,10 @@
 # platform of this machine). The release workflow builds the executables on
 # native runners and packages them this way.
 #
-# Every package also carries plugin.sums at its root: the sha256 of each file of
-# the package in sha256sum format, sorted by path. When MINISIGN_KEY names a
-# minisign secret key file, plugin.sums is signed into plugin.sums.minisig and
-# nginx-ui derives the trust level from the signing key. Without it the packages
-# are unsigned, and a host installs them only in developer mode.
-#
-#   MINISIGN_KEY=/path/to/plugin.key ./build.sh
-#
-# MINISIGN_PASSWORD answers the password prompt without a terminal.
+# The packages are unsigned. The release workflow signs them with the official
+# plugin key through nginxui/plugin-release, which also writes plugin.sums. A
+# local build installs on a host in developer mode, or after
+# "nginx-ui plugin sign <package> --key <key>".
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,20 +105,6 @@ if [[ -n "${PREBUILT}" ]]; then
     exit 1
   fi
   PREBUILT="$(cd "${PREBUILT}" && pwd)"
-fi
-
-MINISIGN_KEY="${MINISIGN_KEY:-}"
-MINISIGN_PASSWORD="${MINISIGN_PASSWORD:-}"
-if [[ -n "${MINISIGN_KEY}" ]]; then
-  if [[ ! -f "${MINISIGN_KEY}" ]]; then
-    echo "MINISIGN_KEY does not name a file: ${MINISIGN_KEY}" >&2
-    exit 1
-  fi
-  if ! command -v minisign >/dev/null 2>&1; then
-    echo "MINISIGN_KEY is set but minisign is not installed" >&2
-    exit 1
-  fi
-  MINISIGN_KEY="$(cd "$(dirname "${MINISIGN_KEY}")" && pwd)/$(basename "${MINISIGN_KEY}")"
 fi
 
 cd "${ROOT}"
@@ -219,38 +200,10 @@ stage_common() {
   done
 }
 
-write_sums() {
-  local dir="$1" file
-  rm -f "${dir}/plugin.sums" "${dir}/plugin.sums.minisig"
-  (
-    cd "${dir}"
-    find . -type f | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r file; do
-      printf '%s  %s\n' "$(sha256_hex "${file}")" "${file}"
-    done
-  ) >"${dir}.sums"
-  mv "${dir}.sums" "${dir}/plugin.sums"
-}
-
-sign_sums() {
-  local dir="$1"
-  if [[ -z "${MINISIGN_KEY}" ]]; then
-    return 0
-  fi
-  (
-    cd "${dir}"
-    if [[ -n "${MINISIGN_PASSWORD}" ]]; then
-      printf '%s\n' "${MINISIGN_PASSWORD}" \
-        | minisign -S -m plugin.sums -x plugin.sums.minisig -s "${MINISIGN_KEY}" -t "${PLUGIN_ID} ${VERSION}"
-    else
-      minisign -S -m plugin.sums -x plugin.sums.minisig -s "${MINISIGN_KEY}" -t "${PLUGIN_ID} ${VERSION}"
-    fi
-  )
-}
-
 package_dir() {
   local dir="$1" archive="$2"
-  local entries=(plugin.json plugin.sums)
-  for entry in plugin.sums.minisig README.md LICENSE server webapp; do
+  local entries=(plugin.json)
+  for entry in README.md LICENSE server webapp; do
     if [[ -e "${dir}/${entry}" ]]; then
       entries+=("${entry}")
     fi
@@ -266,9 +219,6 @@ rm -f "${DIST}/${PLUGIN_ID}-${VERSION}"*.tar.gz "${DIST}/${PLUGIN_ID}-${VERSION}
 mkdir -p "${STAGE}"
 
 echo "building ${PLUGIN_ID} ${VERSION}"
-if [[ -z "${MINISIGN_KEY}" ]]; then
-  echo "MINISIGN_KEY is not set, the packages are unsigned"
-fi
 
 INSTALLED="$(installed_targets)"
 OUTPUTS=()
@@ -317,8 +267,6 @@ for entry in "${PLATFORMS[@]}"; do
   stage_common "${dir}"
   "${MANIFEST_TOOL}" -platform "${key}" -out "${dir}/plugin.json" >/dev/null
 
-  write_sums "${dir}"
-  sign_sums "${dir}"
   package_dir "${dir}" "${DIST}/${PLUGIN_ID}-${VERSION}-${key}.tar.gz"
 done
 

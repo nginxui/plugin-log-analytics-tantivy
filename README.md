@@ -163,10 +163,12 @@ Pushing a tag `vX.Y.Z` that matches the version in `plugin.json` and
 `Cargo.toml` runs `.github/workflows/release.yml`. It builds the executables
 on GitHub runners, natively where a runner exists and with cargo zigbuild
 otherwise, packages them with
-`build.sh --prebuilt`, signs `plugin.sums` with the key of the `release`
-environment (`PLUGIN_SIGNING_KEY`, `PLUGIN_SIGNING_KEY_PASSWORD`), verifies the
-archives against the `PLUGIN_SIGNING_PUBLIC_KEY` variable and publishes the
-archives and their `.sha256` files as a GitHub release. The notes list the features and fixes since the previous tag, generated from
+`build.sh --prebuilt`, signs them through
+[nginxui/plugin-release](https://github.com/nginxui/plugin-release) with the key
+of the `release` environment (`PLUGIN_SIGNING_KEY`, `PLUGIN_SIGNING_KEY_PASSWORD`),
+which checks them against the `PLUGIN_SIGNING_PUBLIC_KEY` variable, and
+publishes the archives and their `.sha256` files as a GitHub release in a job
+apart from the key. The notes list the features and fixes since the previous tag, generated from
 the commit messages by git-cliff (`cliff.toml`).
 A version with a prerelease part such as `0.1.0-beta.1` is marked as a
 prerelease.

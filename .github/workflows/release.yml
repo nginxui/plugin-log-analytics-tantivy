@@ -202,58 +202,27 @@ jobs:
           merge-multiple: true
           path: plugin-log-analytics-tantivy/binaries
 
-      - name: Install minisign
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+      - name: Package
+        run: ./build.sh --prebuilt binaries
 
-      - name: Package and sign
-        env:
-          PLUGIN_SIGNING_KEY: ${{ secrets.PLUGIN_SIGNING_KEY }}
-          PLUGIN_SIGNING_KEY_PASSWORD: ${{ secrets.PLUGIN_SIGNING_KEY_PASSWORD }}
+      - name: One archive per platform plugin.json names
         run: |
-          set -euo pipefail
-          if [ -z "${PLUGIN_SIGNING_KEY}" ]; then
-            echo "the PLUGIN_SIGNING_KEY secret is not set in the release environment; a release must be signed"
-            exit 1
-          fi
-          key_file="${RUNNER_TEMP}/plugin-signing.key"
-          trap 'rm -f "${key_file}"' EXIT
-          (umask 077 && printf '%s\n' "${PLUGIN_SIGNING_KEY}" >"${key_file}")
-          MINISIGN_KEY="${key_file}" MINISIGN_PASSWORD="${PLUGIN_SIGNING_KEY_PASSWORD}" ./build.sh --prebuilt binaries
-
-      # Every archive: its .sha256 file, plugin.sums against the extracted
-      # files, and the signature against the release public key when the
-      # variable is set.
-      - name: Verify the packages
-        env:
-          PLUGIN_SIGNING_PUBLIC_KEY: ${{ vars.PLUGIN_SIGNING_PUBLIC_KEY }}
-        run: |
-          set -euo pipefail
-          public_key=$(printf '%s\n' "${PLUGIN_SIGNING_PUBLIC_KEY}" | grep -Ev '^untrusted comment:' | tr -d '[:space:]')
-          if [ -z "${public_key}" ]; then
-            echo "::notice title=Signatures not checked::Set the PLUGIN_SIGNING_PUBLIC_KEY variable to the release public key to verify the signatures here."
-          fi
-          # One archive per platform plugin.json names
           expected=$(jq '.server.executables | length' plugin.json)
           count=$(find dist -maxdepth 1 -name '*.tar.gz' | wc -l)
           if [ "${count}" -ne "${expected}" ]; then
             echo "expected ${expected} archives, found ${count}"
             exit 1
           fi
-          for archive in dist/*.tar.gz; do
-            echo "::group::${archive}"
-            (cd dist && sha256sum -c "$(basename "${archive}").sha256")
-            dir=$(mktemp -d)
-            tar -xzf "${archive}" -C "${dir}"
-            test -f "${dir}/plugin.sums"
-            test -f "${dir}/plugin.sums.minisig"
-            (cd "${dir}" && sha256sum -c --quiet plugin.sums)
-            if [ -n "${public_key}" ]; then
-              minisign -V -q -m "${dir}/plugin.sums" -x "${dir}/plugin.sums.minisig" -P "${public_key}"
-              echo "plugin.sums.minisig verifies against PLUGIN_SIGNING_PUBLIC_KEY"
-            fi
-            rm -rf "${dir}"
-            echo "::endgroup::"
-          done
+
+      # Signs the packages with the official plugin key and checks them. The
+      # publish job releases them, apart from the signing key.
+      - uses: nginxui/plugin-release@v1
+        with:
+          working-directory: plugin-log-analytics-tantivy
+          signing-key: ${{ secrets.PLUGIN_SIGNING_KEY }}
+          signing-key-password: ${{ secrets.PLUGIN_SIGNING_KEY_PASSWORD }}
+          certificate: ''
+          trusted-key: ${{ vars.PLUGIN_SIGNING_PUBLIC_KEY }}
 
       # The notes list the features and fixes since the previous tag, generated
       # from the commit messages by git-cliff (cliff.toml).
