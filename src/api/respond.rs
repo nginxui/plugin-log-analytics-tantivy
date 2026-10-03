@@ -144,13 +144,15 @@ pub fn query_param(req: &Request<Incoming>, name: &str) -> Option<String> {
     form_urlencoded::parse(query.as_bytes()).find(|(k, _)| k == name).map(|(_, v)| v.into_owned())
 }
 
-/// Whether the client asked for Chinese names.
+/// Whether the client asked for Chinese names. The language of the page, sent
+/// as `X-Language` or `X-Locale`, decides; the browser's `Accept-Language`
+/// only when the page names none.
 pub fn wants_chinese(req: &Request<Incoming>) -> bool {
-    ["accept-language", "x-language", "x-locale"].iter().any(|name| {
-        req.headers()
-            .get(*name)
-            .and_then(|v| v.to_str().ok())
-            .map(|v| v.trim().to_lowercase())
-            .is_some_and(|v| !v.is_empty() && (v.starts_with("zh") || v.contains("zh-") || v.contains("zh_")))
-    })
+    let header = |name: &str| {
+        req.headers().get(name).and_then(|v| v.to_str().ok()).map(|v| v.trim().to_lowercase()).filter(|v| !v.is_empty())
+    };
+    if let Some(page) = header("x-language").or_else(|| header("x-locale")) {
+        return page.starts_with("zh");
+    }
+    header("accept-language").is_some_and(|v| v.starts_with("zh") || v.contains("zh-") || v.contains("zh_"))
 }

@@ -259,15 +259,13 @@ pub fn location_label(entry: &Map<String, Value>, chinese: bool) -> String {
     } else {
         code
     };
-    let base: Vec<String> =
-        [region, text_of(entry, "province"), text_of(entry, "city")].into_iter().filter(|p| !p.is_empty()).collect();
-    let custom: Vec<String> =
-        ["c1", "c2", "c3", "c4"].iter().map(|k| text_of(entry, k)).filter(|p| !p.is_empty()).collect();
-    match (base.is_empty(), custom.is_empty()) {
-        (_, true) => base.join(" · "),
-        (true, false) => custom.join(" · "),
-        (false, false) => format!("{} · {}", base.join(" · "), custom.join(" · ")),
-    }
+    let parts: Vec<String> = [region, text_of(entry, "province"), text_of(entry, "city")]
+        .into_iter()
+        .chain(["c1", "c2", "c3", "c4"].iter().map(|k| text_of(entry, k)))
+        .filter(|p| !p.is_empty())
+        .collect();
+    // Chinese names read as one phrase with spaces, others as a list
+    parts.join(if chinese { " " } else { ", " })
 }
 
 #[cfg(test)]
@@ -281,12 +279,12 @@ mod tests {
     #[test]
     fn location_label_joins_the_parts() {
         let e = entry(&[("region_code", "CN"), ("province", "广东"), ("city", "深圳"), ("c1", "电信")]);
-        assert_eq!(location_label(&e, false), "CN · 广东 · 深圳 · 电信");
-        assert_eq!(location_label(&e, true), "中国 · 广东 · 深圳 · 电信");
+        assert_eq!(location_label(&e, false), "CN, 广东, 深圳, 电信");
+        assert_eq!(location_label(&e, true), "中国 广东 深圳 电信");
         let e = entry(&[("region_code", "US")]);
         assert_eq!(location_label(&e, true), "US");
         let e = entry(&[("c1", "corp"), ("c2", "lan")]);
-        assert_eq!(location_label(&e, false), "corp · lan");
+        assert_eq!(location_label(&e, false), "corp, lan");
         assert_eq!(location_label(&entry(&[]), false), "");
     }
 }
