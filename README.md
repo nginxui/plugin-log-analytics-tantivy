@@ -7,7 +7,7 @@ visitors over time, top pages, browsers, systems, devices and where the
 visitors come from, on a map.
 
 * Plugin id: `com.nginxui.log-analytics-tantivy`
-* Requires NGINX UI 2.7.0 or newer
+* Requires NGINX UI 3.0.0 or newer
 * Plugin API version 1
 
 The plugin serves the same web pages and the same HTTP routes as

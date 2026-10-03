@@ -5,7 +5,7 @@
   "description": "Search nginx access and error logs with structured queries and field filters, and see traffic on a dashboard with a visitor map. Built with Rust for faster indexing and lower resource usage. This preview cannot be enabled together with Log Analytics.",
   "icon_path": "webapp/dist/icon.svg",
   "api_version": 1,
-  "min_nginx_ui_version": "2.7.0",
+  "min_nginx_ui_version": "3.0.0",
   "i18n": {
     "ja_JP": {
       "name": "ログ分析（プレビュー）",
