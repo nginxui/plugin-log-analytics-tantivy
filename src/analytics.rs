@@ -546,7 +546,10 @@ pub struct RegionShare {
 #[derive(Debug, PartialEq, Serialize)]
 pub struct CityPoint {
     pub country: String,
+    /// The English name, the page names the city in its language by `city_id`.
     pub city: String,
+    /// GeoNames id of the city, 0 for data indexed without it.
+    pub city_id: u64,
     pub lat: f64,
     pub lon: f64,
     pub value: u64,
@@ -571,10 +574,11 @@ pub fn city_points(
     Ok(top_terms(&counts, size)
         .into_iter()
         .filter_map(|(key, value)| {
-            let (country, city, lat, lon) = crate::geo::parse_city_point(&key)?;
+            let (country, city, city_id, lat, lon) = crate::geo::parse_city_point(&key)?;
             Some(CityPoint {
                 country: country.to_owned(),
                 city: city.to_owned(),
+                city_id,
                 lat,
                 lon,
                 value,
@@ -712,7 +716,7 @@ mod tests {
             ("FR", "FR-IDF", "FR-75", "FR|Paris|48.86|2.35"),
             ("FR", "FR-IDF", "FR-75", "FR|Paris|48.86|2.35"),
             ("FR", "FR-ARA", "FR-69", "FR|Lyon|45.76|4.83"),
-            ("US", "US-CA", "", "US|San Jose|37.34|-121.89"),
+            ("US", "US-CA", "", "US|San Jose|37.34|-121.89|5392171"),
         ];
         for (country, sub1, sub2, point) in docs {
             let mut d = tantivy::TantivyDocument::default();
@@ -744,5 +748,7 @@ mod tests {
         let us = city_points(&searcher, &f, &filter, Some("US"), 10).unwrap();
         assert_eq!(us.len(), 1);
         assert_eq!((us[0].country.as_str(), us[0].lon, us[0].percent), ("US", -121.89, 100.0));
+        assert_eq!((us[0].city.as_str(), us[0].city_id), ("San Jose", 5392171));
+        assert_eq!(all.iter().find(|p| p.city == "Paris").map(|p| p.city_id), Some(0), "older keys have no id");
     }
 }

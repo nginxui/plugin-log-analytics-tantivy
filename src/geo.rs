@@ -17,14 +17,19 @@ const COUNTRY_XZ: &[u8] = include_bytes!("../assets/GeoLite2-Country.mmdb.xz");
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GeoLocation {
     pub region_code: String,
+    /// The province and city in English, or in Chinese when the database has
+    /// no English name. The page shows other languages, see `city_id`.
     pub province: String,
     pub city: String,
+    /// GeoNames id of the city, 0 when the database has none. The page looks
+    /// up the name of the city in its language by it.
+    pub city_id: u64,
     /// ISO 3166-2 codes of the first two subdivision levels, like `US-CA` or
     /// `FR-IDF` and `FR-75`. Empty when the database has none.
     pub sub1: String,
     pub sub2: String,
-    /// The city as `country|name|latitude|longitude` for the hotspot map, the
-    /// coordinates rounded to two decimals. Empty without coordinates.
+    /// The city for the hotspot map, see [`city_point`]. Empty without
+    /// coordinates.
     pub city_point: String,
     pub c1: String,
     pub c2: String,
@@ -47,6 +52,8 @@ struct Place {
     name: Option<String>,
     name_zh: Option<String>,
     iso_code: Option<String>,
+    // The database stores it as uint32, which the decoder reads only into a u32
+    geoname_id: Option<u32>,
 }
 
 #[derive(Deserialize, Default)]
@@ -207,17 +214,10 @@ impl Geo {
         loc.sub1 = code_of(record.subdivisions.first());
         loc.sub2 = code_of(record.subdivisions.get(1));
 
-        loc.province = province_en;
-        loc.city = city_en;
+        loc.province = if province_en.is_empty() { province_zh } else { province_en };
+        loc.city = if city_en.is_empty() { city_zh } else { city_en };
+        loc.city_id = record.city.geoname_id.map(u64::from).unwrap_or_default();
         if is_chinese_region(&loc.region_code) || is_chinese_region(&iso) {
-            if !province_zh.is_empty() {
-                loc.province = province_zh;
-            } else if loc.province.is_empty() {
-                loc.province = "其它".to_owned();
-            }
-            if !city_zh.is_empty() {
-                loc.city = city_zh;
-            }
             // Hong Kong, Macau and Taiwan are regions of the China map
             if country != "CN" && is_chinese_region(&country) {
                 loc.sub1 = format!("CN-{country}");
@@ -227,26 +227,36 @@ impl Geo {
         }
         if let (Some(lat), Some(lon)) = (record.location.latitude, record.location.longitude) {
             if !loc.city.is_empty() && lat.is_finite() && lon.is_finite() {
-                loc.city_point = city_point(&loc.region_code, &loc.city, lat, lon);
+                loc.city_point = city_point(&loc.region_code, &loc.city, loc.city_id, lat, lon);
             }
         }
         Some(loc)
     }
 }
 
-/// The hotspot key of a city: `country|name|latitude|longitude`. A `|` in the
-/// name would split the key, so it is replaced.
-pub fn city_point(country: &str, city: &str, lat: f64, lon: f64) -> String {
-    format!("{country}|{}|{lat:.2}|{lon:.2}", city.replace('|', "/"))
+/// The hotspot key of a city: `country|name|latitude|longitude|id`, the
+/// coordinates rounded to two decimals and the GeoNames id left out when the
+/// database has none. A `|` in the name would split the key, so it is replaced.
+/// The Go plugin writes the same keys.
+pub fn city_point(country: &str, city: &str, id: u64, lat: f64, lon: f64) -> String {
+    let key = format!("{country}|{}|{lat:.2}|{lon:.2}", city.replace('|', "/"));
+    if id == 0 {
+        key
+    } else {
+        format!("{key}|{id}")
+    }
 }
 
-/// A hotspot key split into its parts, `None` for text in another form.
-pub fn parse_city_point(key: &str) -> Option<(&str, &str, f64, f64)> {
-    let mut parts = key.rsplitn(3, '|');
-    let lon = parts.next()?.parse().ok()?;
-    let lat = parts.next()?.parse().ok()?;
-    let (country, city) = parts.next()?.split_once('|')?;
-    Some((country, city, lat, lon))
+/// A hotspot key split into country, name, GeoNames id (0 without one),
+/// latitude and longitude. `None` for text in another form.
+pub fn parse_city_point(key: &str) -> Option<(&str, &str, u64, f64, f64)> {
+    let parts: Vec<&str> = key.split('|').collect();
+    let id = match parts.len() {
+        4 => 0,
+        5 => parts[4].parse().ok()?,
+        _ => return None,
+    };
+    Some((parts[0], parts[1], id, parts[2].parse().ok()?, parts[3].parse().ok()?))
 }
 
 /// Cache of the locations one thread looked up. Logs repeat their clients.
@@ -331,6 +341,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_place_reads_its_geonames_id() {
+        // The decoder refuses a uint32 for any other integer type, and a failed
+        // field fails the whole record. The country of the embedded database
+        // is a place like the city of the city database.
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct Record {
+            country: Place,
+        }
+        let reader = country_reader().unwrap();
+        let record: Record = reader.lookup("8.8.8.8".parse().unwrap()).unwrap().decode().unwrap().unwrap();
+        assert_eq!(record.country.geoname_id, Some(6252001));
+    }
+
+    #[test]
     fn country_database_answers_from_the_embedded_copy() {
         assert_eq!(country_code("8.8.8.8".parse().unwrap()), "US");
         assert_eq!(country_code("127.0.0.1".parse().unwrap()), "");
@@ -358,9 +383,12 @@ mod tests {
 
     #[test]
     fn city_points_round_trip() {
-        let key = city_point("US", "Salt Lake|City", 40.7608, -111.8910);
+        let key = city_point("US", "Salt Lake|City", 0, 40.7608, -111.8910);
         assert_eq!(key, "US|Salt Lake/City|40.76|-111.89");
-        assert_eq!(parse_city_point(&key), Some(("US", "Salt Lake/City", 40.76, -111.89)));
+        assert_eq!(parse_city_point(&key), Some(("US", "Salt Lake/City", 0, 40.76, -111.89)));
+        let key = city_point("US", "Tampa", 4174757, 27.9475, -82.4584);
+        assert_eq!(key, "US|Tampa|27.95|-82.46|4174757");
+        assert_eq!(parse_city_point(&key), Some(("US", "Tampa", 4174757, 27.95, -82.46)));
         assert_eq!(parse_city_point("broken"), None);
     }
 }

@@ -222,6 +222,9 @@ pub fn build_doc(
         d.add_text(f.device_type, info.device);
     }
     if let Some(loc) = geo.locate(entry.ip) {
+        if loc.city_id > 0 {
+            d.add_u64(f.city_id, loc.city_id);
+        }
         for (field, value) in [
             (f.region_code, &loc.region_code),
             (f.province, &loc.province),

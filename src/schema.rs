@@ -9,7 +9,7 @@ use crate::tokenizer;
 /// Version of the on disk format. The index is recreated when it differs, see
 /// [`crate::engine`]. Bump it with every change of the schema, the analyzers
 /// or what a document means.
-pub const FORMAT_VERSION: u32 = 4;
+pub const FORMAT_VERSION: u32 = 5;
 
 /// Handles to every field of the log index.
 #[derive(Clone, Debug)]
@@ -26,6 +26,8 @@ pub struct Fields {
     pub region_code: Field,
     pub province: Field,
     pub city: Field,
+    /// GeoNames id of the city, see [`crate::geo::GeoLocation`].
+    pub city_id: Field,
     pub c1: Field,
     pub c2: Field,
     pub c3: Field,
@@ -113,6 +115,7 @@ pub fn build() -> (Schema, Fields) {
         region_code: b.add_text_field("region_code", keyword_fast()),
         province: b.add_text_field("province", keyword_fast()),
         city: b.add_text_field("city", keyword_fast()),
+        city_id: b.add_u64_field("city_id", FAST),
         c1: b.add_text_field("c1", keyword_fast()),
         c2: b.add_text_field("c2", keyword_fast()),
         c3: b.add_text_field("c3", keyword_fast()),

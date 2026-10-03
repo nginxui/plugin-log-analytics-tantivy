@@ -85,6 +85,10 @@ struct SegmentColumns {
     ip: Option<StrColumn>,
     level: Option<StrColumn>,
     geo: [Option<StrColumn>; 7],
+    /// The ISO 3166-2 code of the region and the GeoNames id of the city, by
+    /// which the page names them in its language.
+    sub1: Option<StrColumn>,
+    city_id: Option<Column<u64>>,
 }
 
 const GEO_FIELDS: [&str; 7] = ["region_code", "province", "city", "c1", "c2", "c3", "c4"];
@@ -134,7 +138,14 @@ impl<'a> EntryLoader<'a> {
             }
             self.columns.insert(
                 segment,
-                SegmentColumns { ts: ff.column_opt::<i64>("ts")?, ip: ff.str("ip")?, level: ff.str("level")?, geo },
+                SegmentColumns {
+                    ts: ff.column_opt::<i64>("ts")?,
+                    ip: ff.str("ip")?,
+                    level: ff.str("level")?,
+                    geo,
+                    sub1: ff.str("sub1")?,
+                    city_id: ff.column_opt::<u64>("city_id")?,
+                },
             );
         }
         Ok(&self.columns[&segment])
@@ -156,6 +167,8 @@ impl<'a> EntryLoader<'a> {
         for col in &cols.geo {
             geo.push(text_at(col, address.doc_id, &mut buf));
         }
+        let sub1 = text_at(&cols.sub1, address.doc_id, &mut buf);
+        let city_id = cols.city_id.as_ref().and_then(|c| c.first(address.doc_id)).unwrap_or_default();
 
         let parsed = parse::parse_line(&raw, &mut self.times);
         let (method, path, protocol, status, bytes, referer, user_agent, request_time, upstream_time) = match &parsed {
@@ -196,6 +209,8 @@ impl<'a> EntryLoader<'a> {
             }
             m.insert((*name).into(), json!(value));
         }
+        m.insert("sub1".into(), json!(sub1));
+        m.insert("city_id".into(), json!(city_id));
         if let Some(t) = request_time.filter(|t| *t > 0.0) {
             m.insert("request_time".into(), json!(t));
         }
