@@ -106,9 +106,18 @@ anywhere.
 
 | OS | Architectures |
 | --- | --- |
-| Linux | amd64, arm64 (static binaries) |
+| Linux | amd64, arm64, 386, arm, riscv64, loong64 (static binaries) |
 | macOS | amd64, arm64 |
-| Windows | amd64, arm64 |
+| Windows | amd64, arm64, 386 |
+
+These are the platforms Nginx UI is released for, except MIPS and ARMv5: their
+Rust targets lack 64-bit atomics. The `linux-arm` package runs on ARMv6 and
+ARMv7.
+
+On a 32-bit system the index has to fit the address space of the process, as
+it is mapped into memory. A process gets 2 GB on Windows and about 3 GB on
+Linux, which holds an index of 1.5 to 2 GB, some 5 to 7 million log lines. Past that an indexing round stops with
+an error and the plugin keeps serving what it has.
 
 Each platform ships as its own package, see `build.sh`. On Windows the HTTP API
 listens on a loopback port instead of a socket, which the plugin SDK reports to
@@ -151,8 +160,9 @@ paths, chunks and `shared` ranges from `webapp/dist/manifest.webapp.json`
 into it; the tests compare them.
 
 Pushing a tag `vX.Y.Z` that matches the version in `plugin.json` and
-`Cargo.toml` runs `.github/workflows/release.yml`. It builds the six
-executables natively on GitHub runners, packages them with
+`Cargo.toml` runs `.github/workflows/release.yml`. It builds the executables
+on GitHub runners, natively where a runner exists and with cargo zigbuild
+otherwise, packages them with
 `build.sh --prebuilt`, signs `plugin.sums` with the key of the `release`
 environment (`PLUGIN_SIGNING_KEY`, `PLUGIN_SIGNING_KEY_PASSWORD`), verifies the
 archives against the `PLUGIN_SIGNING_PUBLIC_KEY` variable and publishes the

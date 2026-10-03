@@ -4,6 +4,10 @@
 pub mod analytics;
 pub mod api;
 pub mod app;
+// Functions the C library of the soft float ARM build lacks, see armabi.rs.
+// The tests check them everywhere.
+#[cfg(any(test, all(target_arch = "arm", target_env = "musl")))]
+mod armabi;
 pub mod collectors;
 pub mod config;
 pub mod engine;

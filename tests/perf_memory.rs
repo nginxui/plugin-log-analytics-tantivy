@@ -74,7 +74,7 @@ fn sample(label: &str) {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "loongarch64")))]
 fn mimalloc_options() {
     use libmimalloc_sys::mi_option_set;
     let names = [("purge_decommits", 5), ("abandoned_page_purge", 12), ("purge_delay", 15), ("arena_purge_mult", 24)];
@@ -94,7 +94,7 @@ async fn memory_after_a_bulk_import() {
         eprintln!("the performance dataset is not there, skipped");
         return;
     };
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_arch = "loongarch64")))]
     mimalloc_options();
     let tier = std::env::var("PERF_TIER").unwrap_or_else(|_| "large".into());
     let memory = match tier.as_str() {

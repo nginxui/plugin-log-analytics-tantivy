@@ -214,26 +214,27 @@ pub fn peak_rss_mb() -> u64 {
 
 /// Hands the memory the allocator holds back to the system. An indexing round
 /// uses a lot of memory for a while, and an idle plugin should not keep it.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "loongarch64")))]
 pub fn release_memory() {
     // SAFETY: mi_collect only returns free memory of the allocator to the system.
     unsafe { libmimalloc_sys::mi_collect(true) };
 }
 
-#[cfg(windows)]
+// Windows uses its own heap, loongarch64 has mimalloc without the extended API
+#[cfg(any(windows, target_arch = "loongarch64"))]
 pub fn release_memory() {}
 
 /// Option ids of mimalloc v2, which the crate does not export.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "loongarch64")))]
 const MI_ARENA_EAGER_COMMIT: libmimalloc_sys::mi_option_t = 4;
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "loongarch64")))]
 const MI_PURGE_DELAY: libmimalloc_sys::mi_option_t = 15;
 
 /// Makes the allocator return freed memory to the system at once and commit
 /// its arenas as they fill. By default it keeps 70 MB or more of freed memory
 /// through an indexing round, which a small machine cannot spare, and the
 /// cost in speed is about 2%.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "loongarch64")))]
 pub fn tune_allocator() {
     // SAFETY: mi_option_set only stores an option value.
     unsafe {
@@ -242,7 +243,7 @@ pub fn tune_allocator() {
     }
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_arch = "loongarch64"))]
 pub fn tune_allocator() {}
 
 #[cfg(test)]
@@ -259,7 +260,7 @@ mod tests {
         assert_eq!(own_group(text, Some("pids")), None);
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_arch = "loongarch64")))]
     #[test]
     fn allocator_option_ids_match_the_linked_mimalloc() {
         // Options with fixed defaults around the two ids tell that the ids

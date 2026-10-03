@@ -36,8 +36,13 @@
     "executables": {
       "darwin-amd64": "server/dist/log-analytics-tantivy-darwin-amd64",
       "darwin-arm64": "server/dist/log-analytics-tantivy-darwin-arm64",
+      "linux-386": "server/dist/log-analytics-tantivy-linux-386",
       "linux-amd64": "server/dist/log-analytics-tantivy-linux-amd64",
+      "linux-arm": "server/dist/log-analytics-tantivy-linux-arm",
       "linux-arm64": "server/dist/log-analytics-tantivy-linux-arm64",
+      "linux-loong64": "server/dist/log-analytics-tantivy-linux-loong64",
+      "linux-riscv64": "server/dist/log-analytics-tantivy-linux-riscv64",
+      "windows-386": "server/dist/log-analytics-tantivy-windows-386.exe",
       "windows-amd64": "server/dist/log-analytics-tantivy-windows-amd64.exe",
       "windows-arm64": "server/dist/log-analytics-tantivy-windows-arm64.exe"
     },

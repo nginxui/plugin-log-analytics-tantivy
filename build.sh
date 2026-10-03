@@ -49,14 +49,23 @@ TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT}/target}"
 PLUGIN_ID="com.nginxui.log-analytics-tantivy"
 BIN="log-analytics-tantivy"
 
+# The platforms Nginx UI is released for, but MIPS and ARMv5: their Rust
+# targets have no 64-bit atomics. The host names a platform by GOOS and GOARCH
+# only, so one linux-arm package serves ARMv6 and ARMv7, built soft float.
+#
 # platform key | rust target | build tool
 PLATFORMS=(
   "linux-amd64|x86_64-unknown-linux-musl|zigbuild"
   "linux-arm64|aarch64-unknown-linux-musl|zigbuild"
+  "linux-386|i686-unknown-linux-musl|zigbuild"
+  "linux-arm|arm-unknown-linux-musleabi|zigbuild"
+  "linux-riscv64|riscv64gc-unknown-linux-musl|zigbuild"
+  "linux-loong64|loongarch64-unknown-linux-musl|zigbuild"
   "darwin-amd64|x86_64-apple-darwin|cargo"
   "darwin-arm64|aarch64-apple-darwin|cargo"
   "windows-amd64|x86_64-pc-windows-gnu|zigbuild"
   "windows-arm64|aarch64-pc-windows-gnullvm|zigbuild"
+  "windows-386|i686-pc-windows-gnu|zigbuild"
 )
 
 USAGE="usage: $0 [--host-only] [--prebuilt DIR] [--webapp ARCHIVE] [--webapp-only]"
