@@ -7,20 +7,6 @@
   "api_version": 1,
   "min_nginx_ui_version": "3.0.0",
   "i18n": {
-    "ja_JP": {
-      "name": "ログ分析（プレビュー）",
-      "description": "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。",
-      "permission_reasons": {
-        "log.files": "検索とダッシュボードのために、サイトのアクセスログとエラーログをインデックスします。",
-        "network": "ダウンロードを選んだときに IP 位置情報データベースを取得します。"
-      },
-      "screenshot_captions": {
-        "dashboard": "アクセス数、訪問者、転送量とその推移をひと目で確認",
-        "regions": "国を開いて地域ごとのアクセスを確認",
-        "search": "status:5xx のようなフィールド指定で検索",
-        "errors": "レベルと内容でエラーログを検索"
-      }
-    },
     "zh_CN": {
       "name": "日志分析（预览）",
       "description": "对 Nginx 访问日志和错误日志做结构化搜索和按字段筛选，在面板和访客地图上查看流量。使用 Rust 构建，索引更快，资源占用更少。预览版，不能与“日志分析”同时启用。",
@@ -47,6 +33,174 @@
         "regions": "點開國家檢視各地區的訪問",
         "search": "以 status:5xx 這類欄位查詢來搜尋",
         "errors": "依層級和內容搜尋錯誤日誌"
+      }
+    },
+    "ja_JP": {
+      "name": "ログ分析（プレビュー）",
+      "description": "Nginx のアクセスログとエラーログを構造化検索してフィールドで絞り込み、ダッシュボードと訪問者マップでトラフィックを確認します。Rust で構築されており、インデックス作成が速く、リソース使用量も少なくなっています。プレビュー版のため、「ログ分析」と同時に有効にできません。",
+      "permission_reasons": {
+        "log.files": "検索とダッシュボードのために、サイトのアクセスログとエラーログをインデックスします。",
+        "network": "ダウンロードを選んだときに IP 位置情報データベースを取得します。"
+      },
+      "screenshot_captions": {
+        "dashboard": "アクセス数、訪問者、転送量とその推移をひと目で確認",
+        "regions": "国を開いて地域ごとのアクセスを確認",
+        "search": "status:5xx のようなフィールド指定で検索",
+        "errors": "レベルと内容でエラーログを検索"
+      }
+    },
+    "ko_KR": {
+      "name": "로그 분석(미리 보기)",
+      "description": "구조화된 쿼리와 필드 필터로 nginx 접근 로그와 오류 로그를 검색하고, 방문자 지도가 있는 대시보드에서 트래픽을 확인합니다. Rust로 만들어 인덱싱이 더 빠르고 리소스를 적게 사용합니다. 이 미리 보기 버전은 로그 분석과 함께 활성화할 수 없습니다.",
+      "permission_reasons": {
+        "log.files": "검색과 대시보드를 위해 사이트의 접근 로그와 오류 로그를 인덱싱합니다.",
+        "network": "선택한 경우 IP 위치 데이터베이스를 다운로드합니다."
+      },
+      "screenshot_captions": {
+        "dashboard": "방문, 방문자, 트래픽과 추세를 한눈에",
+        "regions": "국가를 열어 지역별 방문 확인",
+        "search": "status:5xx 같은 필드 쿼리로 검색",
+        "errors": "수준과 내용으로 오류 로그 검색"
+      }
+    },
+    "de_DE": {
+      "name": "Protokollanalyse (Vorschau)",
+      "description": "Durchsuchen Sie die Zugriffs- und Fehlerprotokolle von nginx mit strukturierten Abfragen und Feldfiltern und sehen Sie den Datenverkehr in einem Dashboard mit einer Besucherkarte. Mit Rust entwickelt für schnellere Indizierung und geringeren Ressourcenverbrauch. Diese Vorschau kann nicht zusammen mit Protokollanalyse aktiviert werden.",
+      "permission_reasons": {
+        "log.files": "Um die Zugriffs- und Fehlerprotokolle Ihrer Websites für die Suche und das Dashboard zu indizieren.",
+        "network": "Um die IP-Standortdatenbank herunterzuladen, wenn Sie dies wählen."
+      },
+      "screenshot_captions": {
+        "dashboard": "Besuche, Besucher, Datenverkehr und ihre Entwicklung auf einen Blick",
+        "regions": "Ein Land öffnen, um seine Regionen zu sehen",
+        "search": "Mit Feldabfragen wie status:5xx suchen",
+        "errors": "Das Fehlerprotokoll nach Stufe und Text durchsuchen"
+      }
+    },
+    "fr_FR": {
+      "name": "Analyse des journaux (aperçu)",
+      "description": "Recherchez dans les journaux d'accès et d'erreurs de nginx avec des requêtes structurées et des filtres par champ, et visualisez le trafic sur un tableau de bord avec une carte des visiteurs. Conçu en Rust pour une indexation plus rapide et une consommation de ressources réduite. Cet aperçu ne peut pas être activé en même temps qu'Analyse des journaux.",
+      "permission_reasons": {
+        "log.files": "Pour indexer les journaux d'accès et d'erreurs de vos sites pour la recherche et le tableau de bord.",
+        "network": "Pour télécharger la base de données de géolocalisation IP lorsque vous le choisissez."
+      },
+      "screenshot_captions": {
+        "dashboard": "Visites, visiteurs, trafic et leurs tendances en un coup d'œil",
+        "regions": "Ouvrir un pays pour voir ses régions",
+        "search": "Rechercher avec des requêtes de champ comme status:5xx",
+        "errors": "Rechercher dans le journal d'erreurs par niveau et par texte"
+      }
+    },
+    "es": {
+      "name": "Análisis de registros (versión preliminar)",
+      "description": "Busque en los registros de acceso y de errores de nginx con consultas estructuradas y filtros por campo, y vea el tráfico en un panel con un mapa de visitantes. Creado con Rust para una indexación más rápida y un menor uso de recursos. Esta versión preliminar no se puede activar junto con Análisis de registros.",
+      "permission_reasons": {
+        "log.files": "Para indexar los registros de acceso y de errores de sus sitios para la búsqueda y el panel.",
+        "network": "Para descargar la base de datos de ubicación de IP cuando usted lo decida."
+      },
+      "screenshot_captions": {
+        "dashboard": "Visitas, visitantes, tráfico y sus tendencias de un vistazo",
+        "regions": "Abra un país para ver sus regiones",
+        "search": "Busque con consultas de campo como status:5xx",
+        "errors": "Busque en el registro de errores por nivel y texto"
+      }
+    },
+    "it_IT": {
+      "name": "Analisi dei log (anteprima)",
+      "description": "Cerca nei log di accesso e di errore di nginx con query strutturate e filtri per campo e visualizza il traffico in una dashboard con una mappa dei visitatori. Realizzato in Rust per un'indicizzazione più rapida e un minore uso di risorse. Questa anteprima non può essere attivata insieme ad Analisi dei log.",
+      "permission_reasons": {
+        "log.files": "Per indicizzare i log di accesso e di errore dei siti per la ricerca e la dashboard.",
+        "network": "Per scaricare il database di geolocalizzazione IP quando lo si sceglie."
+      },
+      "screenshot_captions": {
+        "dashboard": "Visite, visitatori, traffico e relative tendenze a colpo d'occhio",
+        "regions": "Aprire un paese per vederne le regioni",
+        "search": "Cercare con query sui campi come status:5xx",
+        "errors": "Cercare nel log degli errori per livello e testo"
+      }
+    },
+    "pt_PT": {
+      "name": "Análise de registos (pré-visualização)",
+      "description": "Pesquise nos registos de acesso e de erros do nginx com consultas estruturadas e filtros por campo, e veja o tráfego num painel com um mapa de visitantes. Desenvolvido em Rust para uma indexação mais rápida e menor utilização de recursos. Esta pré-visualização não pode ser ativada em conjunto com Análise de registos.",
+      "permission_reasons": {
+        "log.files": "Para indexar os registos de acesso e de erros dos seus sites para a pesquisa e o painel.",
+        "network": "Para transferir a base de dados de localização de IP quando o decidir."
+      },
+      "screenshot_captions": {
+        "dashboard": "Visitas, visitantes, tráfego e as respetivas tendências num relance",
+        "regions": "Abra um país para ver as suas regiões",
+        "search": "Pesquise com consultas de campo como status:5xx",
+        "errors": "Pesquise no registo de erros por nível e texto"
+      }
+    },
+    "ru_RU": {
+      "name": "Анализ журналов (предварительная версия)",
+      "description": "Поиск по журналам доступа и ошибок nginx с помощью структурированных запросов и фильтров по полям, просмотр трафика на панели с картой посетителей. Написан на Rust для более быстрой индексации и меньшего потребления ресурсов. Эту предварительную версию нельзя включить одновременно с «Анализом журналов».",
+      "permission_reasons": {
+        "log.files": "Чтобы индексировать журналы доступа и ошибок ваших сайтов для поиска и панели.",
+        "network": "Чтобы скачать базу данных местоположения IP, когда вы это выберете."
+      },
+      "screenshot_captions": {
+        "dashboard": "Посещения, посетители, трафик и их динамика с первого взгляда",
+        "regions": "Откройте страну, чтобы увидеть её регионы",
+        "search": "Поиск с запросами по полям, например status:5xx",
+        "errors": "Поиск в журнале ошибок по уровню и тексту"
+      }
+    },
+    "uk_UA": {
+      "name": "Аналіз журналів (попередня версія)",
+      "description": "Пошук у журналах доступу та помилок nginx за допомогою структурованих запитів і фільтрів за полями, перегляд трафіку на панелі з картою відвідувачів. Створено на Rust для швидшого індексування й меншого споживання ресурсів. Цю попередню версію не можна ввімкнути одночасно з «Аналізом журналів».",
+      "permission_reasons": {
+        "log.files": "Щоб індексувати журнали доступу та помилок ваших сайтів для пошуку й панелі.",
+        "network": "Щоб завантажити базу даних розташування IP, коли ви це оберете."
+      },
+      "screenshot_captions": {
+        "dashboard": "Відвідування, відвідувачі, трафік і їхня динаміка з першого погляду",
+        "regions": "Відкрийте країну, щоб побачити її регіони",
+        "search": "Пошук із запитами за полями, наприклад status:5xx",
+        "errors": "Пошук у журналі помилок за рівнем і текстом"
+      }
+    },
+    "tr_TR": {
+      "name": "Günlük Analizi (Önizleme)",
+      "description": "nginx erişim ve hata günlüklerinde yapılandırılmış sorgular ve alan filtreleriyle arama yapın, trafiği ziyaretçi haritalı bir panoda görün. Daha hızlı dizinleme ve daha düşük kaynak kullanımı için Rust ile geliştirildi. Bu önizleme, Günlük Analizi ile birlikte etkinleştirilemez.",
+      "permission_reasons": {
+        "log.files": "Sitelerinizin erişim ve hata günlüklerini arama ve pano için dizinlemek amacıyla.",
+        "network": "Siz seçtiğinizde IP konum veritabanını indirmek için."
+      },
+      "screenshot_captions": {
+        "dashboard": "Ziyaretler, ziyaretçiler, trafik ve eğilimleri tek bakışta",
+        "regions": "Bölgelerini görmek için bir ülkeyi açın",
+        "search": "status:5xx gibi alan sorgularıyla arayın",
+        "errors": "Hata günlüğünde düzeye ve metne göre arayın"
+      }
+    },
+    "vi_VN": {
+      "name": "Phân tích nhật ký (bản xem trước)",
+      "description": "Tìm kiếm nhật ký truy cập và nhật ký lỗi của nginx bằng truy vấn có cấu trúc và bộ lọc theo trường, đồng thời xem lưu lượng trên bảng điều khiển có bản đồ khách truy cập. Được xây dựng bằng Rust để lập chỉ mục nhanh hơn và tốn ít tài nguyên hơn. Bản xem trước này không thể bật cùng lúc với Phân tích nhật ký.",
+      "permission_reasons": {
+        "log.files": "Để lập chỉ mục nhật ký truy cập và nhật ký lỗi của các trang web phục vụ tìm kiếm và bảng điều khiển.",
+        "network": "Để tải cơ sở dữ liệu vị trí IP khi bạn chọn."
+      },
+      "screenshot_captions": {
+        "dashboard": "Lượt truy cập, khách truy cập, lưu lượng và xu hướng trong nháy mắt",
+        "regions": "Mở một quốc gia để xem các khu vực",
+        "search": "Tìm kiếm bằng truy vấn trường như status:5xx",
+        "errors": "Tìm trong nhật ký lỗi theo mức độ và nội dung"
+      }
+    },
+    "ar": {
+      "name": "تحليل السجلات (معاينة)",
+      "description": "ابحث في سجلات الوصول والأخطاء في nginx باستخدام استعلامات منظمة وعوامل تصفية حسب الحقل، واطّلع على حركة المرور في لوحة معلومات مع خريطة للزوار. مبني بلغة Rust لفهرسة أسرع واستهلاك أقل للموارد. لا يمكن تفعيل هذه المعاينة مع تحليل السجلات في الوقت نفسه.",
+      "permission_reasons": {
+        "log.files": "لفهرسة سجلات الوصول والأخطاء لمواقعك من أجل البحث ولوحة المعلومات.",
+        "network": "لتنزيل قاعدة بيانات مواقع عناوين IP عندما تختار ذلك."
+      },
+      "screenshot_captions": {
+        "dashboard": "الزيارات والزوار وحركة المرور واتجاهاتها في لمحة",
+        "regions": "افتح دولة لعرض مناطقها",
+        "search": "ابحث باستعلامات الحقول مثل status:5xx",
+        "errors": "ابحث في سجل الأخطاء حسب المستوى والنص"
       }
     }
   },
