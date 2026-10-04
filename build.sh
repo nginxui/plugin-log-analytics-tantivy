@@ -117,16 +117,23 @@ if [[ -z "${WEBAPP_ARCHIVE}" && -f "../plugin-log-analytics-webapp/release/${WEB
 fi
 if [[ -z "${WEBAPP_ARCHIVE}" ]]; then
   # Kept apart from the packages, dist/*.tar.gz is what a release publishes.
+  # A later run reuses the download while it matches the checksum kept with it.
   WEBAPP_ARCHIVE="${DIST}/cache/${WEBAPP_NAME}"
-  url="https://github.com/nginxui/plugin-log-analytics-webapp/releases/download/v${WEBAPP_VERSION}/${WEBAPP_NAME}"
-  mkdir -p "${DIST}/cache"
-  curl -fsSL -o "${WEBAPP_ARCHIVE}" "${url}"
-  # The release publishes the checksum next to the archive
-  expected="$(curl -fsSL "${url}.sha256" | cut -d' ' -f1)"
-  actual="$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)"
-  if [[ -z "${expected}" || "${actual}" != "${expected}" ]]; then
-    echo "the webapp archive does not match the checksum of its release: ${actual}" >&2
-    exit 1
+  if [[ ! -f "${WEBAPP_ARCHIVE}.sha256" || ! -f "${WEBAPP_ARCHIVE}" ]] ||
+    [[ "$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)" != "$(cat "${WEBAPP_ARCHIVE}.sha256")" ]]; then
+    url="https://github.com/nginxui/plugin-log-analytics-webapp/releases/download/v${WEBAPP_VERSION}/${WEBAPP_NAME}"
+    mkdir -p "${DIST}/cache"
+    rm -f "${WEBAPP_ARCHIVE}.sha256"
+    # Retries ride out a passing server error of the download.
+    curl -fsSL --retry 5 --retry-delay 3 -o "${WEBAPP_ARCHIVE}" "${url}"
+    # The release publishes the checksum next to the archive
+    expected="$(curl -fsSL --retry 5 --retry-delay 3 "${url}.sha256" | cut -d' ' -f1)"
+    actual="$(shasum -a 256 "${WEBAPP_ARCHIVE}" | cut -d' ' -f1)"
+    if [[ -z "${expected}" || "${actual}" != "${expected}" ]]; then
+      echo "the webapp archive does not match the checksum of its release: ${actual}" >&2
+      exit 1
+    fi
+    printf '%s' "${expected}" >"${WEBAPP_ARCHIVE}.sha256"
   fi
 fi
 if [[ ! -f "${WEBAPP_ARCHIVE}" ]]; then

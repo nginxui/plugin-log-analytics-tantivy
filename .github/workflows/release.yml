@@ -224,11 +224,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # Downloads the webapp release webapp.lock names and checks it against the
-      # checksum published with it
-      - name: Take the webapp release
-        run: ./build.sh --webapp-only
-
       # The path is relative to the workspace, not to the working directory.
       - uses: actions/download-artifact@v8
         with:
