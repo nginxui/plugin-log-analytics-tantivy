@@ -5,7 +5,8 @@ name: Release
 # "version": "1.0.0". A version with a prerelease part (0.1.0-beta.1) is
 # published as a GitHub prerelease.
 #
-# Three stages with separate privileges:
+# Four stages with separate privileges:
+#   test     runs the tests against the webapp release, read only, no secrets
 #   build    one native job per platform, read only, no secrets
 #   package  takes the webapp release, packages and signs, holds the signing key
 #            through the "release" environment, read only
@@ -34,6 +35,63 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugin-log-analytics-tantivy
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: plugin-log-analytics-tantivy
+          persist-credentials: false
+
+      # The API shape and search syntax tests read the webapp source of the
+      # release this plugin packages.
+      - name: Read webapp.lock
+        id: webapp
+        run: echo "version=$(sed -n 's/^version=//p' webapp.lock)" >> "${GITHUB_OUTPUT}"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: nginxui/plugin-log-analytics-webapp
+          ref: v${{ steps.webapp.outputs.version }}
+          path: plugin-log-analytics-webapp
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check that the tag matches plugin.json and Cargo.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' plugin.json | head -n 1)
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          if [ "${tag}" != "${version}" ]; then
+            echo "tag v${tag} does not match plugin.json version ${version}"
+            exit 1
+          fi
+          if [ "${tag}" != "${crate}" ]; then
+            echo "tag v${tag} does not match Cargo.toml version ${crate}"
+            exit 1
+          fi
+
+      # Downloads the webapp release webapp.lock names and checks it against the
+      # checksum published with it. The manifest tests compare plugin.json with
+      # its build.
+      - name: Take the webapp release
+        run: ./build.sh --webapp-only
+
+      - run: cargo test --locked
+
+      - name: plugin.json follows the plugin-spec schema
+        run: |
+          curl -fsSL -o "${RUNNER_TEMP}/plugin.schema.json" \
+            https://raw.githubusercontent.com/nginxui/plugin-spec/main/schema/plugin.schema.json
+          npx --yes -p ajv-cli@5 -p ajv-formats@3 ajv validate --spec=draft2020 --strict=false \
+            -c ajv-formats -s "${RUNNER_TEMP}/plugin.schema.json" -d plugin.json
+
   build:
     name: build ${{ matrix.key }}
     runs-on: ${{ matrix.runner }}
@@ -145,7 +203,7 @@ jobs:
           retention-days: 7
 
   package:
-    needs: build
+    needs: [test, build]
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -166,34 +224,10 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Check that the tag matches plugin.json and Cargo.toml
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' plugin.json | head -n 1)
-          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
-          if [ "${tag}" != "${version}" ]; then
-            echo "tag v${tag} does not match plugin.json version ${version}"
-            exit 1
-          fi
-          if [ "${tag}" != "${crate}" ]; then
-            echo "tag v${tag} does not match Cargo.toml version ${crate}"
-            exit 1
-          fi
-
       # Downloads the webapp release webapp.lock names and checks it against the
       # checksum published with it
       - name: Take the webapp release
         run: ./build.sh --webapp-only
-
-      - name: plugin.json follows the plugin-spec schema
-        run: |
-          curl -fsSL -o "${RUNNER_TEMP}/plugin.schema.json" \
-            https://raw.githubusercontent.com/nginxui/plugin-spec/main/schema/plugin.schema.json
-          npx --yes -p ajv-cli@5 -p ajv-formats@3 ajv validate --spec=draft2020 --strict=false \
-            -c ajv-formats -s "${RUNNER_TEMP}/plugin.schema.json" -d plugin.json
-
-      - name: plugin.json matches the webapp release
-        run: cargo test --locked --lib manifest
 
       # The path is relative to the workspace, not to the working directory.
       - uses: actions/download-artifact@v8
