@@ -1,7 +1,7 @@
 //! The indexing engine: keeps the index up to date with the log files, runs the
 //! rounds, and tracks what each log group is doing for the status pages.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -96,6 +96,18 @@ pub struct Engine {
     sizing_override: Mutex<Option<Sizing>>,
     last_report: Mutex<Option<RoundReport>>,
     rounds: AtomicU64,
+}
+
+/// Lets the writer merge what it can before it is dropped.
+fn finish_writer(writer: SharedWriter) {
+    match Arc::try_unwrap(writer) {
+        Ok(lock) => {
+            if let Err(e) = lock.into_inner().expect("writer lock").wait_merging_threads() {
+                nginxui_plugin_sdk::warn!("merging stopped with an error: {e}");
+            }
+        }
+        Err(_) => nginxui_plugin_sdk::warn!("the index writer is still in use"),
+    }
 }
 
 fn now_secs() -> i64 {
@@ -471,15 +483,7 @@ impl Engine {
             report.failed += 1;
         }
 
-        // The writer merges what it can before it is dropped
-        match Arc::try_unwrap(writer) {
-            Ok(lock) => {
-                if let Err(e) = lock.into_inner().expect("writer lock").wait_merging_threads() {
-                    nginxui_plugin_sdk::warn!("merging stopped with an error: {e}");
-                }
-            }
-            Err(_) => nginxui_plugin_sdk::warn!("the index writer is still in use"),
-        }
+        finish_writer(writer);
         if report.docs > 0 {
             if let Err(e) = self.store.merge_tail() {
                 nginxui_plugin_sdk::warn!("could not merge the last segments: {e}");
@@ -494,6 +498,81 @@ impl Engine {
         }
         crate::sys::release_memory();
         report
+    }
+
+    /// Removes the index of groups the host no longer lists and whose main log
+    /// file is gone, e.g. the access log of a deleted site. Log files are never
+    /// touched. It returns the groups to pass to the next call.
+    ///
+    /// A group is removed only when the previous call found it stale too. The
+    /// list the host answers while it boots can still be incomplete, and removing
+    /// an index cannot be undone. An empty list proves nothing either, so it
+    /// removes nothing.
+    pub async fn prune_stale_groups(self: &Arc<Self>, seen: HashSet<String>) -> HashSet<String> {
+        let _guard = self.round_lock.lock().await;
+        let listed: HashSet<String> = self.hostlogs.groups().into_iter().map(|g| g.path).collect();
+        if self.cancelled() || listed.is_empty() {
+            return seen;
+        }
+
+        let engine = self.clone();
+        let mut stale = tokio::task::spawn_blocking(move || engine.stale_groups(&listed)).await.unwrap_or_default();
+        let confirmed: Vec<String> = stale.intersection(&seen).cloned().collect();
+        if confirmed.is_empty() {
+            return stale;
+        }
+
+        let engine = self.clone();
+        let groups = confirmed.clone();
+        let removed = tokio::task::spawn_blocking(move || engine.remove_groups(&groups))
+            .await
+            .unwrap_or_else(|e| Err(e.to_string()));
+        match removed {
+            Ok(()) => {
+                for group in &confirmed {
+                    nginxui_plugin_sdk::info!(
+                        "removed the index of {group}: the host no longer lists it and its log file is gone"
+                    );
+                    self.set_phase(group, None);
+                    stale.remove(group);
+                }
+            }
+            Err(e) => nginxui_plugin_sdk::warn!("cannot remove the index of stale log groups: {e}"),
+        }
+        stale
+    }
+
+    /// The groups in the state that are not listed and whose main log file does
+    /// not exist. Any other error of the file keeps the group, so a permission
+    /// problem never drops index data.
+    fn stale_groups(&self, listed: &HashSet<String>) -> HashSet<String> {
+        let gone = |path: &str| matches!(std::fs::metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound);
+        self.state().groups.into_keys().filter(|g| !listed.contains(g) && gone(g)).collect()
+    }
+
+    /// Removes the documents and the state of the groups in one commit. The dirty
+    /// mark stays as it is: it belongs to the groups that remain, and the next
+    /// round acts on it.
+    fn remove_groups(&self, groups: &[String]) -> Result<(), String> {
+        let writer: SharedWriter = Arc::new(RwLock::new(self.store.writer(&self.sizing()).map_err(|e| e.to_string())?));
+        let committed = self.state();
+        let dirty = committed.dirty;
+        let working = Mutex::new(committed);
+        {
+            let w = writer.read().expect("writer lock");
+            let mut state = working.lock().expect("state lock");
+            for group in groups {
+                w.delete_query(self.group_query(group)).map_err(|e| e.to_string())?;
+                state.groups.remove(group);
+                self.rollups.invalidate(group);
+            }
+        }
+        let on_commit = |s: IndexState, d: Delta| self.on_commit(s, d);
+        pipeline::commit_state(&writer, &working, dirty, &self.rollups, &on_commit)?;
+        finish_writer(writer);
+        self.store.reload();
+        crate::sys::release_memory();
+        Ok(())
     }
 
     fn concurrency(&self, sizing: &Sizing) -> usize {

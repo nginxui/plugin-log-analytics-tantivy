@@ -1,6 +1,7 @@
 //! The plugin process: ties the engine to the host, runs the schedule and
 //! stops everything on shutdown.
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -154,6 +155,7 @@ impl App {
     async fn schedule(self: &Arc<Self>) {
         let mut stop = self.shutdown.subscribe();
         let mut wait = self.first_round_delay;
+        let mut stale_groups = HashSet::new();
         // The first settings arrive before the schedule starts. That is not a
         // change of the interval, the first round still comes after its delay.
         let _ = tokio::time::timeout(Duration::ZERO, self.reset.notified()).await;
@@ -174,6 +176,7 @@ impl App {
             if self.stopping() {
                 return;
             }
+            stale_groups = self.engine.prune_stale_groups(stale_groups).await;
             if let Some(report) = self.engine.run_round(Scope::All, false).await {
                 nginxui_plugin_sdk::info!(
                     "indexing round: {} group(s), {} document(s), {} failed, {} ms",
