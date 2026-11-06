@@ -16,8 +16,8 @@ name: Release
 # file) and PLUGIN_SIGNING_KEY_PASSWORD. Give the environment a required
 # reviewer so a pushed tag alone cannot sign. The PLUGIN_SIGNING_PUBLIC_KEY
 # variable, the matching public key, lets the run verify what it signed. The
-# catalog (nginxui/plugins) polls this repository's releases and picks the new
-# one up on its own.
+# official catalog (plugins.nginxui.com) polls this repository's releases and
+# picks the new one up on its own.
 #
 # No cargo cache is used here, so a cache written by a pull request can never
 # end up in a signed binary.
